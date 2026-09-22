@@ -1,54 +1,28 @@
-# Pre-Submission Checklist: PreVal (Stocklana Hackathon)
+# Pre-Submission Notes (PreVal — Stocklana Hackathon)
 
-This checklist tracks temporary testing switches, development mock parameters, and verification items that MUST be cleaned up or confirmed before final submission.
+Quick notes to myself on what to double check before I submit.
 
-## 1. Development Flags & Switches to Remove
+## Dev switches — make sure these are off
 
-- [ ] **`simulatePreStocks429` query parameter & body flag**:
-  - Located in [`app/page.tsx`](file:///C:/Users/HomePC/.gemini/antigravity/scratch/preval/app/page.tsx) and [`app/api/quote/route.ts`](file:///C:/Users/HomePC/.gemini/antigravity/scratch/preval/app/api/quote/route.ts).
-  - Currently protected behind:
-    ```typescript
-    const isDev = process.env.NODE_ENV === 'development' || process.env.ENABLE_DEV_TESTING === 'true';
-    const allowSimulation = isDev && Boolean(simulatePreStocks429);
-    ```
-  - Action before final submission: Strip out `simulatePreStocks429` logic entirely so only the real `fetchPreStocksTokensWithFallback()` runs.
+- There's a `simulatePreStocks429` flag I added in `app/page.tsx` and `app/api/quote/route.ts` to test what happens if PreStocks rate-limits us. It's locked behind `ENABLE_DEV_TESTING=true`, which I never set in production, so it can't be triggered on the live site. Still on my list to just delete this before final submission instead of leaving it gated.
+- `ENABLE_DEV_TESTING` — not set anywhere in `.env.local` or in Vercel. Only used locally when I was testing the rate-limit banner. Double check it's not accidentally added to the Vercel dashboard.
 
-- [ ] **`ENABLE_DEV_TESTING` Environment Variable**:
-  - Confirmed: **Unset by default** in standard builds and `.env.local`.
-  - Only used during local test harness runs. Ensure it is not defined in any deployment environment (e.g. Vercel dashboard).
+## Caching / attribution
 
-## 2. Production Caching & Attribution
+- `/api/quote` caches for 10s and serves stale-while-revalidate for 20s, so we're not hammering PreStocks or Jupiter on every page load. Runs fine on Vercel's free tier.
+- The app credits its data sources in the subheading ("Quotes fetched via Jupiter and compared with PreStocks' mark prices") — want to keep that honest and visible.
+- If PreStocks data is older than 60 seconds, or if a quote errors out, buying gets blocked automatically. No stale-price trades.
 
-- [ ] **HTTP Caching**:
-  - `Cache-Control: public, s-maxage=10, stale-while-revalidate=20` configured on `/api/quote`.
-  - Works natively on Vercel's Edge Network (free tier includes shared Edge Cache per region).
-- [ ] **Attribution Notice**:
-  - Subheading explicitly reads: *"Quotes fetched via Jupiter and compared with PreStocks' mark prices"*.
-- [ ] **Hard Guard Rules**:
-  - Fails closed on quote errors (`RATE_LIMITED`, `SERVICE_UNAVAILABLE`, `NO_ROUTE`).
-  - Stale data (> 60s) strictly triggers `BLOCK` and disables Buy execution.
+## Things I had to work around on Vercel
 
-## 3. Vercel Serverless Architecture & Limitations Breakdown
+- **Files can't be written to on Vercel** (serverless functions run in a read-only sandbox). So `saveLastDryRun`/`getLastDryRunFallback` just fail quietly and fall back to a static snapshot file (`data/last_dry_run.json`) instead of crashing.
+- **Rate limiting only works per-instance**, not globally — Vercel can spin up multiple copies of the app, and they don't share memory. Fine for a demo, wouldn't be enough at real scale without something like Redis.
+- **10-second function timeout** on the free plan. The 3-leg basket simulation runs all legs in parallel with an 8s cap each, so it stays well under that.
+- Using the Node.js runtime, not Edge — needed it for the Solana libraries to work properly.
 
-- **Ephemeral / Read-Only Filesystem**:
-  - Vercel serverless functions run in ephemeral container sandboxes where root repository files are read-only and `/tmp` is non-persistent across invocations.
-  - Mitigation: `saveLastDryRun` and `getLastDryRunFallback` in [`src/dataLayer.js`](file:///C:/Users/HomePC/.gemini/antigravity/scratch/preval/src/dataLayer.js) are protected with `try/catch` wrappers. If disk writes fail, execution proceeds seamlessly with in-memory state and static fallback assets (`data/last_dry_run.json`) rather than crashing.
+## Environment variables (set in Vercel dashboard, not in the repo)
 
-- **In-Memory Rate Limiting**:
-  - In-memory rate limit maps (`simulateRateLimitMap`, `rpcRateLimitMap`) reside in container memory. In multi-instance or multi-region serverless deployments, memory is not shared between lambdas.
-  - Status: Sufficient for demo and DDoS spike smoothing per container instance. Production multi-region scaling would integrate Upstash Redis / Vercel KV.
-
-- **Function Timeouts**:
-  - Vercel Hobby plan enforces a 10s max duration per function invocation (Pro is 15s/60s).
-  - Mitigation: All 3 legs in `/api/basket/simulate` execute in parallel via `Promise.all` with strict 8-second timeouts per leg (`simulateLegWithTimeout`), keeping overall endpoint latency (~1.2s - 2.5s) safely under the 10s ceiling.
-
-- **Node.js Runtime vs Edge Runtime**:
-  - Endpoints run on the Node.js runtime (`nodejs`) rather than the Edge runtime to ensure complete compatibility with `@solana/web3.js`, `crypto`, and `Buffer` manipulation.
-
-- **Environment Variables**:
-  - Production deployments require setting environment variables in the Vercel Project Dashboard (Settings > Environment Variables):
-    - `SOLANA_RPC_URL`: Required (mainnet RPC endpoint without key in public commits).
-    - `DEMO_SIM_ADDRESS`: Required for dry-run simulation without user wallet.
-    - `ENABLE_REAL_BUY`: Set to `false` (defaults to false).
-    - `ENABLE_DEV_TESTING`: Must be left unset/false in production.
-
+- `SOLANA_RPC_URL` — my RPC endpoint (kept out of git, obviously)
+- `DEMO_SIM_ADDRESS` — a funded public wallet used only for read-only simulations, so people can try the dry run without connecting their own wallet
+- `ENABLE_REAL_BUY=false` — live buying is off on the public site, on purpose
+- `ENABLE_DEV_TESTING` — left unset in production
