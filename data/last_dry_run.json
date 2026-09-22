@@ -1,0 +1,72 @@
+{
+  "timestamp": "2026-09-22T11:46:28.294Z",
+  "success": true,
+  "dryRun": true,
+  "totalUsdc": 0.3,
+  "legs": [
+    {
+      "symbol": "ANTHROPIC",
+      "name": "Anthropic PreStocks",
+      "allocationUsdc": 0.1,
+      "status": "WARN",
+      "guardStatus": "WARN",
+      "warnings": [
+        "Pool impact is high (2.34%), but empirical size impact is 0.00%."
+      ],
+      "simulatedTokensOut": 0.000095,
+      "netTokensDelivered": 0.000095,
+      "minReceivedTokens": 0.000095,
+      "computeUnits": 53999,
+      "txSizeBytes": 465,
+      "err": null,
+      "venue": "Meteora DLMM",
+      "routeType": "Meteora DLMM",
+      "executablePrice": 1048.7237032531411,
+      "markPrice": 1051.08611717,
+      "markAgeSeconds": 37,
+      "premiumPct": -0.22
+    },
+    {
+      "symbol": "ANDURIL",
+      "name": "Anduril PreStocks",
+      "allocationUsdc": 0.1,
+      "status": "PASS",
+      "guardStatus": "PASS",
+      "warnings": [],
+      "simulatedTokensOut": 0.000638,
+      "netTokensDelivered": 0.000638,
+      "minReceivedTokens": 0.000629,
+      "computeUnits": 21964,
+      "txSizeBytes": 443,
+      "err": null,
+      "venue": "Manifest",
+      "routeType": "Manifest",
+      "executablePrice": 156.8260662486625,
+      "markPrice": 153.01757653,
+      "markAgeSeconds": 37,
+      "premiumPct": 2.49
+    },
+    {
+      "symbol": "FIGUREAI",
+      "name": "Figure AI PreStocks",
+      "allocationUsdc": 0.1,
+      "status": "WARN",
+      "guardStatus": "WARN",
+      "warnings": [
+        "Round-trip exit cost is 3.90%, exceeding the 3% threshold."
+      ],
+      "simulatedTokensOut": 0.000542,
+      "netTokensDelivered": 0.000542,
+      "minReceivedTokens": 0.000535,
+      "computeUnits": 44606,
+      "txSizeBytes": 485,
+      "err": null,
+      "venue": "Manifest",
+      "routeType": "Manifest",
+      "executablePrice": 184.64071050336256,
+      "markPrice": 182.04042229,
+      "markAgeSeconds": 37,
+      "premiumPct": 1.43
+    }
+  ]
+}

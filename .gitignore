@@ -1,0 +1,23 @@
+.env*
+.env.local
+node_modules/
+.DS_Store
+dist/
+.next/
+.chrome_debug/
+.edge_tmp/
+.chrome_tmp/
+preview.png
+screenshot.png
+test-output.txt
+evidence/
+
+# Scratch & one-off exploration scripts
+check_*.js
+test_*.js
+milestone*.js
+fetch_data.js
+diagnose_figureai.js
+compare_routes.js
+scripts/test_*.mjs
+scripts/verify_*.mjs
