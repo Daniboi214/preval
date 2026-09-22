@@ -44,11 +44,9 @@ export async function POST(req: Request) {
     const rpcUrl = getRpcUrl();
     const connection = new Connection(rpcUrl, 'confirmed');
 
-    // Fetch native SOL balance
     const solLamports = await connection.getBalance(pubkey);
     const solBalance = solLamports / 1e9;
 
-    // Fetch USDC balance
     let usdcBalance = 0;
     try {
       const tokenAccounts = await connection.getParsedTokenAccountsByOwner(pubkey, {

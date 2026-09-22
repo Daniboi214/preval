@@ -51,7 +51,6 @@ function checkSimulateRateLimit(ip: string): boolean {
 const simulateCache = new Map<string, { data: any; timestamp: number }>();
 const SIMULATE_CACHE_TTL_MS = 30000;
 
-// ATA Derivation helper
 const SPL_ATA_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
 const TOKEN_2022_PROGRAM_ID = new PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb');
 
@@ -214,7 +213,7 @@ async function simulateLegWithTimeout(
       empiricalPriceImpactPct = Math.max(0, ((priceAtX - priceAt1) / priceAt1) * 100);
     }
 
-    // Real sell-back quote for round-trip exit cost (Finding 2)
+    // Real sell-back quote for round-trip exit cost
     let sellQuoteResult = null;
     if (buyQuote && buyQuote.outAmount) {
       const sellUnits = parseInt(buyQuote.outAmount, 10);
@@ -277,7 +276,6 @@ async function simulateLegWithTimeout(
       multiplier: metadata.multiplier
     });
 
-    // Fetch Jupiter swap transaction
     let swapData: any = null;
     try {
       const swapRes = await fetch('https://lite-api.jup.ag/swap/v1/swap', {
@@ -308,7 +306,6 @@ async function simulateLegWithTimeout(
     const txBuffer = Buffer.from(swapData.swapTransaction, 'base64');
     const txSizeBytes = txBuffer.length;
 
-    // Sanity check before simulation
     const sanity = await validateTransactionSanity(swapData.swapTransaction, simAddress, legAmount, {
       connection,
       skipSim: true
@@ -466,7 +463,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // 3. Validate and Cap Spend Amount: between $0.20 and $3.00 total, min $0.10/leg (Item D.1)
+    // 3. Validate and Cap Spend Amount: between $0.20 and $3.00 total, min $0.10/leg
     const parsedTotalUsdc = Number(totalUsdc) || 0;
     if (parsedTotalUsdc <= 0 || parsedTotalUsdc > 3.0) {
       return NextResponse.json(
@@ -497,7 +494,7 @@ export async function POST(req: Request) {
     const connection = new Connection(rpcUrl, 'confirmed');
     const userPubkey = new PublicKey(simAddress);
 
-    // 5. Process and simulate each leg with fresh 60s token catalog (Item C)
+    // 5. Process and simulate each leg with fresh 60s token catalog
     const tokenFetchResult = await fetchPreStocksTokensWithFallback(PRESTOCKS_API_URL, 60000);
     const isSnapshotSourced = tokenFetchResult.source === 'snapshot' || tokenFetchResult.source?.includes('snapshot');
     if (tokenFetchResult.isStale || (tokenFetchResult.dataAgeSeconds && tokenFetchResult.dataAgeSeconds > 60) || isSnapshotSourced) {
@@ -533,7 +530,7 @@ export async function POST(req: Request) {
       legs: legResults
     };
 
-    // Store last successful live dry run (Item D.2)
+    // Store last successful live dry run
     if (!hasFailures) {
       saveLastDryRun({
         timestamp: new Date().toISOString(),
@@ -544,7 +541,6 @@ export async function POST(req: Request) {
       });
     }
 
-    // Cache successful response for 30s
     simulateCache.set(cacheKey, { data: responsePayload, timestamp: Date.now() });
 
     return NextResponse.json(responsePayload);

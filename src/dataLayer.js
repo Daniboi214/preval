@@ -314,7 +314,6 @@ async function fetchMintMetadata(connection, mintAddress) {
 
     const extensions = parsed.extensions || [];
 
-    // Scale multiplier
     const scaledConfig = extensions.find(ext => ext.extension === 'scaledUiAmountConfig');
     if (scaledConfig && scaledConfig.state) {
       const now = Math.floor(Date.now() / 1000);
@@ -413,7 +412,6 @@ function classifyVenue(routeInput = '') {
       isUnverified: false
     };
   }
-  // Untested venue
   return {
     venue: label || 'Unknown',
     verified: false,
@@ -569,7 +567,6 @@ function calculateTokenMetrics({
   const normalizedBuy = buyQuoteResult || (buyQuote ? { ok: true, data: buyQuote } : null);
   const normalizedSell = sellQuoteResult || (sellQuote ? { ok: true, data: sellQuote } : null);
 
-  // Check if quote failed
   if (!normalizedBuy || !normalizedBuy.ok) {
     const errorCode = normalizedBuy?.errorCode || 'NO_ROUTE';
     const errorMsg = normalizedBuy?.error || 'No executable Jupiter route exists';
@@ -857,7 +854,6 @@ function calculateMinimumReceived({
   const feePct = (activeFeeBps || 0) / 10000;
   const netMinUnits = feeDeductedBeyondQuote ? minRawUnits * (1 - feePct) : minRawUnits;
 
-  // Scaled UI tokens
   const minScaledTokens = (netMinUnits / Math.pow(10, decimals)) * multiplier;
 
   return {
@@ -1081,7 +1077,7 @@ async function prepareSingleTokenSwapCore(params, deps = {}) {
     };
   }
 
-  // 1b. In live-buy mode, require dedicated RPC configuration (Item 3)
+  // 1b. In live-buy mode, require dedicated RPC configuration
   const isRpcConfigured = Boolean(
     process.env.SOLANA_RPC_URL &&
     process.env.SOLANA_RPC_URL.trim().length > 0 &&
@@ -1109,7 +1105,6 @@ async function prepareSingleTokenSwapCore(params, deps = {}) {
     };
   }
 
-  // 3. Validate user wallet address
   if (!userPublicKey || typeof userPublicKey !== 'string') {
     return {
       status: 400,
@@ -1167,10 +1162,9 @@ async function prepareSingleTokenSwapCore(params, deps = {}) {
     };
   }
 
-  // 6. Metadata
   const metadata = metadataOverride || await fetchMintMetadata(token.contract_address);
 
-  // RESTRICTION: Until verified, allow live buys ONLY for tokens whose multiplier is 1.0 (Item 4)
+  // RESTRICTION: Until verified, allow live buys ONLY for tokens whose multiplier is 1.0
   if (metadata.multiplier !== 1.0) {
     return {
       status: 400,
@@ -1224,7 +1218,7 @@ async function prepareSingleTokenSwapCore(params, deps = {}) {
     : '';
   const venueInfo = classifyVenue(routeAtX);
 
-  // 8. Venue verification check (Item 9): Live buying ONLY allowed on verified venues
+  // 8. Venue verification check: Live buying ONLY allowed on verified venues
   if (!venueInfo.verified) {
     return {
       status: 400,
@@ -1366,7 +1360,7 @@ async function prepareSingleTokenSwapCore(params, deps = {}) {
     };
   }
 
-  // 11. Transaction Sanity & Pre-Simulation Check (Item 2)
+  // 11. Transaction Sanity & Pre-Simulation Check
   let txBase64 = deps.swapTransactionOverride;
   if (!txBase64) {
     if (deps.quoteResultOverride) {
@@ -1504,7 +1498,6 @@ async function prepareBasketSwapsCore(params, deps = {}) {
     }
   }
 
-  // 2. Validate User Wallet Address
   if (!userPublicKey || typeof userPublicKey !== 'string') {
     return {
       status: 400,
@@ -1632,7 +1625,6 @@ async function prepareBasketSwapsCore(params, deps = {}) {
     };
   }
 
-  // All legs passed!
   return {
     status: 200,
     body: {
@@ -1668,7 +1660,7 @@ async function prepareBasketSwaps(clientParams = {}) {
 }
 
 /**
- * 9. RPC Proxy Request Validation, Dispatch & Rate Limiting (Item 1 & 3)
+ * 9. RPC Proxy Request Validation, Dispatch & Rate Limiting
  */
 const ALLOWED_RPC_METHODS = [
   'sendTransaction',
@@ -1843,7 +1835,7 @@ export {
 };
 
 /**
-  * 10. Blockhash Expiry Verification (Item 3)
+  * 10. Blockhash Expiry Verification
   * Transactions with blockhashes older than maxAgeMs (default 45s) must be rejected / re-quoted.
   */
 function isBlockhashExpired(preparedTimestamp, maxAgeMs = 45000, now = Date.now()) {
@@ -1852,7 +1844,7 @@ function isBlockhashExpired(preparedTimestamp, maxAgeMs = 45000, now = Date.now(
 }
 
 /**
- * 11. Dry Run Fallback Storage (Item D.2)
+ * 11. Dry Run Fallback Storage
  * Persists and retrieves the last successful live dry run when simulation is unavailable.
  */
 function getLastDryRunFallback(customPath = null) {

@@ -70,7 +70,6 @@ export async function POST(req: Request) {
     const allTokens: any[] = tokenFetchResult.tokens;
     const tokenMap = new Map<string, any>(allTokens.map((t: any) => [t.symbol, t]));
 
-    // Filter strictly to valid selected symbols (quote ONLY selected tokens)
     const validSymbols = selectedSymbols.filter((s: string) => tokenMap.has(s));
     if (validSymbols.length === 0) {
       return NextResponse.json({ error: 'No valid tokens selected' }, { status: 400 });
@@ -116,7 +115,6 @@ export async function POST(req: Request) {
         true
       );
 
-      // Measure routes and venue
       const routeAtX = buyQuoteResult.ok
         ? buyQuoteResult.data.routePlan?.[0]?.swapInfo?.label || 'Direct'
         : '';
