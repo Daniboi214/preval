@@ -920,8 +920,11 @@ export default function Home() {
       <header className="border-b border-slate-200/80 bg-white/90 backdrop-blur-md sticky top-0 z-50 shadow-2xs">
         <div className="max-w-6xl mx-auto px-2.5 sm:px-6 py-3 flex items-center justify-between gap-1.5 sm:gap-3">
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-            <div className="h-8 w-8 rounded-lg bg-slate-900 flex items-center justify-center font-bold text-white text-xs tracking-wider shadow-xs shrink-0">
-              PV
+            <div className="w-8 h-8 shrink-0 flex items-center justify-center">
+              <svg width="32" height="32" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 drop-shadow-xs">
+                <path d="M20 4 L34 10 L34 20 Q34 32 20 38 Q6 32 6 20 L6 10 Z" fill="#059669" />
+                <text x="20" y="25" textAnchor="middle" fill="#ffffff" fontSize="13" fontWeight="600" fontFamily="inherit">PV</text>
+              </svg>
             </div>
             <div>
               <div className="flex items-center gap-1.5 sm:gap-2">
@@ -942,7 +945,7 @@ export default function Home() {
                   </span>
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400 hidden sm:block font-normal mt-0.5">
+              <p className="text-[11px] text-slate-500 hidden sm:block font-normal mt-0.5">
                 Guarded PreStocks Basket on Solana
               </p>
             </div>
@@ -952,10 +955,10 @@ export default function Home() {
             {/* Wallet balances if connected */}
             {wallet.connected && wallet.publicKey && (
               <div className="hidden md:flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg text-xs font-mono text-slate-600">
-                <span className="text-slate-400">SOL:</span>
+                <span className="text-slate-500">SOL:</span>
                 <span className="text-slate-900 font-semibold">{balanceLoading ? '...' : (solBalance ?? 0)}</span>
                 <span className="text-slate-300">|</span>
-                <span className="text-slate-400">USDC:</span>
+                <span className="text-slate-500">USDC:</span>
                 <span className="text-emerald-600 font-semibold">${balanceLoading ? '...' : (usdcBalance ?? 0).toFixed(2)}</span>
               </div>
             )}
@@ -981,16 +984,18 @@ export default function Home() {
       {/* Main Content */}
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8 w-full space-y-8 flex-1">
         {/* Pitch Hero */}
-        <div className="pt-2 sm:pt-4 pb-1 space-y-3 max-w-3xl">
-          <h1 className="text-3xl sm:text-4xl lg:text-[40px] font-bold tracking-tight text-slate-900 leading-[1.2]">
-            Buy the private AI & frontier-tech wave in one click,{' '}
-            <span className="text-emerald-600 block sm:inline">
-              without overpaying.
-            </span>
-          </h1>
-          <p className="text-base sm:text-lg text-slate-500 leading-relaxed font-normal max-w-2xl">
-            Compares live Jupiter prices with PreStocks' mark price and checks pool depth before you buy.
-          </p>
+        <div className="relative -mx-4 sm:-mx-6 -mt-8 px-4 sm:px-6 pt-10 pb-3 rounded-b-3xl overflow-hidden [background:radial-gradient(ellipse_80%_60%_at_50%_0%,rgba(5,150,105,0.06)_0%,rgba(248,250,252,0)_100%)]">
+          <div className="max-w-3xl space-y-3 relative z-10">
+            <h1 className="text-3xl sm:text-4xl lg:text-[40px] font-semibold tracking-tight text-slate-900 leading-[1.2]">
+              Buy the private AI & frontier-tech wave in one click,{' '}
+              <span className="text-emerald-600 block sm:inline">
+                without overpaying.
+              </span>
+            </h1>
+            <p className="text-base sm:text-lg text-slate-600 leading-relaxed font-normal max-w-2xl">
+              Compares live Jupiter prices with PreStocks' mark price and checks pool depth before you buy.
+            </p>
+          </div>
         </div>
 
         {/* Controls Card */}
@@ -1000,7 +1005,7 @@ export default function Home() {
               <h2 className="text-sm font-semibold text-slate-900 tracking-tight">
                 1. Configure Your Basket
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">Select preset or toggle individual tokens</p>
+              <p className="text-xs text-slate-600 mt-0.5">Select preset or toggle individual tokens</p>
             </div>
             <button
               onClick={applyPreset}
@@ -1050,7 +1055,7 @@ export default function Home() {
                 Total USDC Amount
               </label>
               <div className="relative">
-                <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-medium">$</span>
+                <span className="absolute left-3 top-2.5 text-xs text-slate-500 font-medium">$</span>
                 <input
                   type="number"
                   min={0.10}
@@ -1067,7 +1072,7 @@ export default function Home() {
                   className="w-full bg-slate-50 focus:bg-white border border-slate-200 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 rounded-lg pl-7 pr-3 py-2 text-sm text-slate-900 font-mono font-medium outline-none transition shadow-2xs"
                 />
               </div>
-              <span className="text-[11px] text-slate-400 mt-1.5 block">Live buys in this demo are capped at $3 (basket) and $2 (single token).</span>
+              <span className="text-[11px] text-slate-600 mt-1.5 block">Live buys in this demo are capped at $3 (basket) and $2 (single token).</span>
               {clampNote && (
                 <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200/80 rounded-md px-2 py-1 font-mono mt-1.5">{clampNote}</div>
               )}
@@ -1088,9 +1093,9 @@ export default function Home() {
                   onChange={(e) => setMaxPremium(Number(e.target.value))}
                   className="w-full bg-slate-50 focus:bg-white border border-slate-200 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 rounded-lg pl-3 pr-7 py-2 text-sm text-slate-900 font-mono font-medium outline-none transition shadow-2xs"
                 />
-                <span className="absolute right-3 top-2.5 text-xs text-slate-400 font-medium">%</span>
+                <span className="absolute right-3 top-2.5 text-xs text-slate-500 font-medium">%</span>
               </div>
-              <span className="text-[11px] text-slate-400 mt-1.5 block">Default: +5.0% above mark price</span>
+              <span className="text-[11px] text-slate-600 mt-1.5 block">Default: +5.0% above mark price</span>
             </div>
 
             <div>
@@ -1109,9 +1114,9 @@ export default function Home() {
                   onChange={(e) => setMaxImpact(Number(e.target.value))}
                   className="w-full bg-slate-50 focus:bg-white border border-slate-200 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 rounded-lg pl-3 pr-7 py-2 text-sm text-slate-900 font-mono font-medium outline-none transition shadow-2xs"
                 />
-                <span className="absolute right-3 top-2.5 text-xs text-slate-400 font-medium">%</span>
+                <span className="absolute right-3 top-2.5 text-xs text-slate-500 font-medium">%</span>
               </div>
-              <span className="text-[11px] text-slate-400 mt-1.5 block">Default: 2.0% empirical impact threshold</span>
+              <span className="text-[11px] text-slate-600 mt-1.5 block">Default: 2.0% empirical impact threshold</span>
             </div>
           </div>
         </div>
@@ -1125,7 +1130,7 @@ export default function Home() {
                 <span className="flex items-center justify-center w-5 h-5 rounded-full bg-slate-100 text-slate-700 text-xs font-semibold">2</span>
                 Live Valuation & Guard Verification
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-xs text-slate-600 mt-0.5">
                 Quotes fetched via Jupiter and compared with PreStocks' mark prices
               </p>
             </div>
@@ -1150,7 +1155,6 @@ export default function Home() {
           {prestocksStatus && (prestocksStatus.isRateLimited || prestocksStatus.isStale) && (
             <div className="p-3.5 bg-amber-50 border-b border-amber-200/80 flex items-center justify-between gap-3 text-xs text-amber-800">
               <div className="flex items-center gap-2">
-                <span>⚠️</span>
                 <span>
                   {prestocksStatus.isRateLimited
                     ? `PreStocks data is temporarily rate-limited. Showing last good data from ${prestocksStatus.dataAgeSeconds > 60 ? `${Math.floor(prestocksStatus.dataAgeSeconds / 60)} minute(s)` : `${prestocksStatus.dataAgeSeconds}s`} ago.`
@@ -1167,7 +1171,7 @@ export default function Home() {
           {hasBlockedTokens && (
             <div className="p-3.5 bg-rose-50 border-b border-rose-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div className="text-xs text-rose-800 font-medium">
-                <span className="font-semibold text-rose-900">🔴 {blockedNames}</span>{' '}
+                <span className="font-semibold text-rose-900">{blockedNames}</span>{' '}
                 {isStaleDataBlock ? (
                   <span>
                     blocked: data is {prestocksStatus?.dataAgeSeconds || quotes[0]?.quoteAgeSeconds || 'stale'}s old; preview only.
@@ -1183,7 +1187,6 @@ export default function Home() {
                   onClick={excludeBlockedTokens}
                   className="text-xs font-medium px-3 py-1.5 rounded-lg bg-white hover:bg-rose-100/80 text-rose-700 border border-rose-200 transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-2xs"
                 >
-                  <span>🛡️</span>
                   <span>Exclude blocked and re-split ${amountUsdc.toFixed(2)}</span>
                 </button>
               )}
@@ -1199,21 +1202,21 @@ export default function Home() {
 
           {error && (
             <div className="p-3.5 bg-rose-50 border-b border-rose-200 text-rose-700 text-xs">
-              ⚠️ {error}
+              {error}
             </div>
           )}
 
           {/* Token Rows */}
           <div className="divide-y divide-slate-100">
             {loading && quotes.length === 0 ? (
-              <div className="p-8 text-center text-slate-500 text-xs">
+              <div className="p-8 text-center text-slate-600 text-xs">
                 <div className="inline-flex items-center gap-2">
                   <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping"></span>
                   Fetching live on-chain quotes and reading Token-2022 extensions...
                 </div>
               </div>
             ) : quotes.length === 0 ? (
-              <div className="p-8 text-center text-slate-500 text-xs">
+              <div className="p-8 text-center text-slate-600 text-xs">
                 No tokens selected. Select at least one token above.
               </div>
             ) : (
@@ -1246,7 +1249,7 @@ export default function Home() {
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5">
                             <span className="font-semibold text-slate-900 text-sm tracking-tight">{q.symbol}</span>
-                            <span className="text-xs text-slate-400 font-normal hidden md:inline truncate max-w-[130px]">
+                            <span className="text-xs text-slate-600 font-normal hidden md:inline truncate max-w-[130px]">
                               {q.name}
                             </span>
                           </div>
@@ -1257,7 +1260,7 @@ export default function Home() {
                       <div className="text-left sm:text-right sm:w-1/5">
                         <div className="text-sm font-semibold text-slate-900 font-mono">
                           {q.executablePrice ? `$${q.executablePrice.toFixed(2)}` : (
-                            <span className="text-slate-400 italic text-xs font-sans">
+                            <span className="text-slate-600 italic text-xs font-sans">
                               {q.errorCode === 'RATE_LIMITED' || q.errorCode === 'SERVICE_UNAVAILABLE'
                                 ? 'Unavailable'
                                 : 'No route'}
@@ -1265,7 +1268,7 @@ export default function Home() {
                           )}
                         </div>
                         {q.feeNote && (
-                          <div className="text-[10px] text-slate-400 font-normal">
+                          <div className="text-[10px] text-slate-600 font-normal">
                             {q.feeNote}
                           </div>
                         )}
@@ -1275,7 +1278,7 @@ export default function Home() {
                       <div className="text-left sm:text-left flex-1 min-w-0">
                         {verdict.severity === 'block' ? (
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold tracking-wide uppercase bg-rose-100 text-rose-800 border border-rose-200 shrink-0">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide uppercase bg-rose-100 text-rose-800 border border-rose-200 shrink-0">
                               Blocked
                             </span>
                             <span className="text-xs font-semibold text-rose-700">
@@ -1301,7 +1304,7 @@ export default function Home() {
                       <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
                         <button
                           onClick={() => toggleExpand(q.symbol)}
-                          className="text-xs font-medium text-slate-600 hover:text-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition shadow-2xs flex items-center gap-1 cursor-pointer"
+                          className="text-xs font-medium text-slate-700 hover:text-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 transition shadow-2xs flex items-center gap-1 cursor-pointer"
                         >
                           <span>{isExpanded ? 'Less' : 'Details'}</span>
                           <span className={`text-[10px] transition-transform ${isExpanded ? 'rotate-180' : ''}`}>▾</span>
@@ -1312,12 +1315,11 @@ export default function Home() {
                           disabled={isBlocked || loading || buyStep === 'PREPARING'}
                           className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1 shadow-2xs ${
                             isBlocked
-                              ? 'bg-slate-100 text-slate-300 cursor-not-allowed border border-slate-200'
+                              ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
                               : 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer'
                           }`}
                           title={isBlocked ? "Blocked by guard" : !isRealBuyLive ? "Simulate single token swap (demo)" : "Buy single token (max $2)"}
                         >
-                          <span>⚡</span>
                           <span>Buy</span>
                         </button>
                       </div>
@@ -1328,15 +1330,15 @@ export default function Home() {
                       <div className="px-4 sm:px-6 pb-5 pt-1 bg-slate-50/70 border-t border-slate-100">
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 py-3 text-xs">
                           <div className="bg-white p-2.5 rounded-xl border border-slate-200/80 shadow-2xs">
-                            <span className="text-[11px] text-slate-400 uppercase font-medium block">Allocated</span>
+                            <span className="text-[11px] text-slate-600 uppercase font-medium block">Allocated</span>
                             <span className="font-semibold text-slate-900 font-mono">${q.allocatedUsdc.toFixed(2)}</span>
                           </div>
                           <div className="bg-white p-2.5 rounded-xl border border-slate-200/80 shadow-2xs">
-                            <span className="text-[11px] text-slate-400 uppercase font-medium block">PreStocks Mark</span>
+                            <span className="text-[11px] text-slate-600 uppercase font-medium block">PreStocks Mark</span>
                             <span className="font-semibold text-slate-900 font-mono">${q.markPrice.toFixed(2)}</span>
                           </div>
                           <div className="bg-white p-2.5 rounded-xl border border-slate-200/80 shadow-2xs">
-                            <span className="text-[11px] text-slate-400 uppercase font-medium block">Spread vs Mark</span>
+                            <span className="text-[11px] text-slate-600 uppercase font-medium block">Spread vs Mark</span>
                             <span className={`font-semibold font-mono ${
                               q.premiumVsMarkPct !== null && q.premiumVsMarkPct > maxPremium
                                 ? 'text-rose-600'
@@ -1348,16 +1350,15 @@ export default function Home() {
                             </span>
                           </div>
                           <div className="bg-white p-2.5 rounded-xl border border-slate-200/80 shadow-2xs">
-                            <span className="text-[11px] text-slate-400 uppercase font-medium block">Exit Cost (Round-Trip)</span>
+                            <span className="text-[11px] text-slate-600 uppercase font-medium block">Exit Cost (Round-Trip)</span>
                             <span className={`font-semibold font-mono ${
                               q.roundTripLossPct !== null && q.roundTripLossPct > 3 ? 'text-amber-700' : 'text-slate-900'
                             }`}>
                               {q.roundTripLossPct !== null ? `${q.roundTripLossPct.toFixed(2)}%` : 'N/A'}
-                              {q.roundTripLossPct !== null && q.roundTripLossPct > 3 && ' ⚠️'}
                             </span>
                           </div>
                           <div className="bg-white p-2.5 rounded-xl border border-slate-200/80 shadow-2xs">
-                            <span className="text-[11px] text-slate-400 uppercase font-medium block">Pool Impact (Jupiter)</span>
+                            <span className="text-[11px] text-slate-600 uppercase font-medium block">Pool Impact (Jupiter)</span>
                             <span className={`font-semibold font-mono ${
                               q.poolImpactJupiter !== null && q.poolImpactJupiter > maxImpact ? 'text-amber-700' : 'text-slate-700'
                             }`}>
@@ -1365,7 +1366,7 @@ export default function Home() {
                             </span>
                           </div>
                           <div className="bg-white p-2.5 rounded-xl border border-slate-200/80 shadow-2xs">
-                            <span className="text-[11px] text-slate-400 uppercase font-medium block">Empirical Impact ($X vs $1)</span>
+                            <span className="text-[11px] text-slate-600 uppercase font-medium block">Empirical Impact ($X vs $1)</span>
                             <span className={`font-semibold font-mono ${
                               q.empiricalImpactPct !== null && q.empiricalImpactPct > maxImpact ? 'text-rose-600' : 'text-slate-700'
                             }`}>
@@ -1373,13 +1374,13 @@ export default function Home() {
                             </span>
                           </div>
                           <div className="bg-white p-2.5 rounded-xl border border-slate-200/80 shadow-2xs">
-                            <span className="text-[11px] text-slate-400 uppercase font-medium block">Route & Venue</span>
+                            <span className="text-[11px] text-slate-600 uppercase font-medium block">Route & Venue</span>
                             <span className="font-medium text-slate-800 text-[11px] truncate block">
                               {q.hasRoute && q.routeType ? q.routeType : '—'}
                             </span>
                           </div>
                           <div className="bg-white p-2.5 rounded-xl border border-slate-200/80 shadow-2xs">
-                            <span className="text-[11px] text-slate-400 uppercase font-medium block">Quote Freshness</span>
+                            <span className="text-[11px] text-slate-600 uppercase font-medium block">Quote Freshness</span>
                             <span className="font-semibold text-slate-700 font-mono">
                               {q.hasRoute ? `${q.quoteAgeSeconds}s ago` : '—'}
                             </span>
@@ -1388,7 +1389,7 @@ export default function Home() {
 
                         {/* Original Precise Guard Diagnostic Text */}
                         <div className="mt-1 p-3 rounded-xl bg-white border border-slate-200/80 text-xs">
-                          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-0.5">
+                          <span className="text-[11px] font-semibold text-slate-600 uppercase tracking-wider block mb-0.5">
                             Original Guard Diagnostic
                           </span>
                           {isBlocked ? (
@@ -1413,7 +1414,6 @@ export default function Home() {
               <div className="text-sm font-semibold text-slate-900">
                 {hasBlockedTokens ? (
                   <span className="text-rose-700 flex items-center gap-1.5">
-                    <span>⚠️</span>
                     <span>{blockedCount} token(s) exceed protection thresholds</span>
                   </span>
                 ) : (
@@ -1423,7 +1423,7 @@ export default function Home() {
                   </span>
                 )}
               </div>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-xs text-slate-600 mt-0.5">
                 {hasBlockedTokens
                   ? 'Basket execution is blocked to protect your capital.'
                   : `Simulated or executed together for $${amountUsdc.toFixed(2)} total USDC.`}
@@ -1434,7 +1434,6 @@ export default function Home() {
                   onClick={excludeBlockedTokens}
                   className="mt-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
                 >
-                  <span>🛡️</span>
                   <span>Exclude blocked and re-split ${amountUsdc.toFixed(2)}</span>
                 </button>
               )}
@@ -1461,7 +1460,6 @@ export default function Home() {
                     : "Dry run: simulated on mainnet, nothing was sent"
                 }
               >
-                <span>{hasBlockedTokens ? '⚠️' : '⚡'}</span>
                 <span>
                   {prestocksStatus?.isRateLimited
                     ? "Buy Disabled (Rate-limited)"
@@ -1475,7 +1473,7 @@ export default function Home() {
                 </span>
               </button>
               {!isRealBuyLive && !hasBlockedTokens && (
-                <span className="text-[11px] text-slate-400 font-normal text-center sm:text-right">
+                <span className="text-[11px] text-slate-600 font-normal text-center sm:text-right">
                   Dry run: simulated on mainnet, nothing was sent
                 </span>
               )}
@@ -1484,9 +1482,9 @@ export default function Home() {
         </div>
 
         {/* Essential Risk Disclosures & Limitations Banner */}
-        <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-500 space-y-1.5 leading-relaxed font-normal">
+        <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-600 space-y-1.5 leading-relaxed font-normal">
           <div className="font-semibold text-slate-700 flex items-center gap-1.5 text-xs tracking-tight mb-1">
-            <span>⚠️</span> Essential Risk Disclosures & Limitations
+            Essential Risk Disclosures & Limitations
           </div>
           <ul className="list-disc pl-4 space-y-1 text-[11px]">
             <li className="text-slate-600 font-medium">
@@ -1507,7 +1505,7 @@ export default function Home() {
               <div className="flex items-center justify-between border-b border-slate-100 pb-3.5">
                 <div className="flex items-center gap-2">
                   <span className="h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
-                  <h3 className="text-sm font-bold text-slate-900 tracking-tight">
+                  <h3 className="text-sm font-semibold text-slate-900 tracking-tight">
                     {buyStep === 'SUCCESS'
                       ? (isBasketMode ? 'Basket Swaps Confirmed' : 'Swap Confirmed')
                       : buyStep === 'ERROR'
@@ -1525,9 +1523,9 @@ export default function Home() {
                     setPreparedBasket(null);
                     setPreparedSwap(null);
                   }}
-                  className="text-slate-400 hover:text-slate-700 text-base leading-none p-1 rounded-md hover:bg-slate-100 transition cursor-pointer"
+                  className="text-slate-500 hover:text-slate-800 text-base leading-none p-1 rounded-md hover:bg-slate-100 transition cursor-pointer"
                 >
-                  ✕
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
               </div>
 
@@ -1538,7 +1536,7 @@ export default function Home() {
                   <div className="text-slate-900 font-semibold text-sm">
                     Re-fetching fresh quotes and simulating swap on Helius RPC...
                   </div>
-                  <div className="text-xs text-slate-500">
+                  <div className="text-xs text-slate-600">
                     Verifying safety guards, pool depth, and Token-2022 transfer fee
                   </div>
                 </div>
@@ -1563,7 +1561,7 @@ export default function Home() {
                       <span className={`h-2 w-2 rounded-full ${secondsUntilExpiry <= 10 ? 'bg-rose-500' : 'bg-emerald-500'}`}></span>
                       <span className="font-medium">Transaction Blockhash Validity:</span>
                     </div>
-                    <div className="font-bold font-mono">
+                    <div className="font-semibold font-mono">
                       {secondsUntilExpiry > 0 ? (
                         <span className={secondsUntilExpiry <= 10 ? 'text-rose-600' : 'text-emerald-700'}>
                           Expires in {secondsUntilExpiry}s
@@ -1581,26 +1579,26 @@ export default function Home() {
                         /* Dry-run simulation header */
                         <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
-                              ✓ {preparedBasket.label || "Dry run: simulated on mainnet, nothing was sent"}
+                            <span className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              {preparedBasket.label || "Dry run: simulated on mainnet, nothing was sent"}
                             </span>
                             <span className="text-slate-900 font-mono font-semibold text-xs">Total: ${preparedBasket.totalUsdc?.toFixed(2)} USDC</span>
                           </div>
-                          <div className="text-[11px] text-slate-500 flex flex-col sm:flex-row sm:items-center justify-between gap-1 pt-1.5 border-t border-slate-200/80">
+                          <div className="text-[11px] text-slate-600 flex flex-col sm:flex-row sm:items-center justify-between gap-1 pt-1.5 border-t border-slate-200/80">
                             <span>Demo wallet (read-only simulation)</span>
-                            <span className="text-slate-400 text-[10px]">Read from DEMO_SIM_ADDRESS</span>
+                            <span className="text-slate-500 text-[10px]">Read from DEMO_SIM_ADDRESS</span>
                           </div>
                         </div>
                       ) : (
                         <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
                           <div>
-                            <span className="text-[10px] text-slate-400 uppercase font-medium block">Multi-Token Basket</span>
-                            <span className="text-slate-900 font-bold text-sm">
+                            <span className="text-[10px] text-slate-500 uppercase font-medium block">Multi-Token Basket</span>
+                            <span className="text-slate-900 font-semibold text-sm">
                               {preparedBasket.legs?.length} Approved PreStocks Legs
                             </span>
                           </div>
                           <div>
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
                               Server Guard Verified
                             </span>
                           </div>
@@ -1611,7 +1609,6 @@ export default function Home() {
                       {preparedBasket.warnings && preparedBasket.warnings.length > 0 && (
                         <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200/80 text-amber-900 text-xs space-y-1">
                           <div className="font-semibold text-xs text-amber-900 flex items-center gap-1.5">
-                            <span>⚠️</span>
                             <span>Basket Guard Notice</span>
                           </div>
                           <div className="text-[11px] text-amber-800 leading-relaxed pt-0.5">{cleanReasons(preparedBasket.warnings)}</div>
@@ -1622,7 +1619,6 @@ export default function Home() {
                       {preparedBasket.hasFailures && (
                         <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 text-xs space-y-2">
                           <div className="font-semibold text-xs text-rose-900 flex items-center gap-1.5">
-                            <span>⚠️</span>
                             <span>Partial Simulation Failure</span>
                           </div>
                           <p className="text-xs text-rose-800">
@@ -1633,7 +1629,6 @@ export default function Home() {
                               onClick={handleReQuoteFailedLegs}
                               className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
                             >
-                              <span>🛡️</span>
                               <span>Re-quote failed legs</span>
                             </button>
                           </div>
@@ -1647,27 +1642,27 @@ export default function Home() {
                             <div className="flex justify-between items-center">
                               <div className="flex items-center gap-2">
                                 <span className="font-semibold text-slate-900">{leg.symbol}</span>
-                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
+                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase ${
                                   leg.status === 'FAIL'
                                     ? 'bg-rose-50 text-rose-700 border border-rose-200'
                                     : leg.status === 'WARN' || leg.guardStatus === 'WARN'
                                     ? 'bg-amber-50 text-amber-700 border border-amber-200'
                                     : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                                 }`}>
-                                  {leg.status === 'FAIL' ? '✗ FAIL' : (leg.status === 'WARN' || leg.guardStatus === 'WARN') ? '⚠️ WARN' : '✓ PASS'}
+                                  {leg.status === 'FAIL' ? 'FAIL' : (leg.status === 'WARN' || leg.guardStatus === 'WARN') ? 'WARN' : 'PASS'}
                                 </span>
                               </div>
                               <span className="text-slate-900 font-mono font-semibold">${(leg.allocationUsdc ?? 0).toFixed(2)} USDC</span>
                             </div>
 
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 text-[10px] text-slate-500 font-mono pt-1 border-t border-slate-100">
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 text-[10px] text-slate-600 font-mono pt-1 border-t border-slate-100">
                               <div>Tokens: <span className="text-slate-800 font-semibold">{leg.status === 'FAIL' || leg.simulatedTokensOut === 'n/a' || !leg.simulatedTokensOut ? 'n/a' : `~${typeof leg.simulatedTokensOut === 'number' ? leg.simulatedTokensOut.toFixed(6) : leg.simulatedTokensOut}`}</span></div>
                               <div>Compute: <span className="text-slate-800">{leg.computeUnits ? `${leg.computeUnits.toLocaleString()} CU` : '—'}</span></div>
                               <div>Tx Size: <span className="text-slate-800">{leg.txSizeBytes ? `${leg.txSizeBytes} B` : '—'}</span></div>
                               <div>Venue: <span className="text-slate-800">{leg.routeType || leg.venue || '—'}</span></div>
                             </div>
 
-                            <div className="flex justify-between items-center text-slate-500 text-[10px] font-mono">
+                            <div className="flex justify-between items-center text-slate-600 text-[10px] font-mono">
                               <span>Exec: ${leg.executablePrice?.toFixed(2) || leg.summary?.executablePrice?.toFixed(2) || '—'}</span>
                               <span>Mark: ${leg.markPrice?.toFixed(2) || leg.summary?.markPrice?.toFixed(2) || '—'} ({leg.markAgeSeconds ?? 0}s old)</span>
                               <span className={(leg.premiumPct ?? leg.summary?.premiumVsMarkPct ?? 0) > 5 ? 'text-rose-600 font-semibold' : 'text-emerald-600 font-semibold'}>
@@ -1677,7 +1672,7 @@ export default function Home() {
 
                             {leg.warnings && leg.warnings.length > 0 && (
                               <div className="text-[11px] text-amber-800 bg-amber-50 p-2 rounded-lg border border-amber-200/80">
-                                <span className="font-semibold">⚠️ Guard notice: </span>
+                                <span className="font-semibold">Guard notice: </span>
                                 {leg.warnings.some((w: string) => w.toLowerCase().includes('exit cost'))
                                   ? 'Selling back right now would cost more than usual'
                                   : leg.warnings.some((w: string) => w.toLowerCase().includes('pool impact'))
@@ -1735,7 +1730,6 @@ export default function Home() {
                             onClick={handleConfirmAndSignBasket}
                             className="w-full py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition flex items-center justify-center gap-2 cursor-pointer text-xs shadow-2xs"
                           >
-                            <span>⚡</span>
                             <span>Proceed to Sign Basket in Phantom</span>
                           </button>
                         )}
@@ -1756,20 +1750,20 @@ export default function Home() {
                       {/* Venue Name and Status */}
                       <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
                         <div>
-                          <span className="text-[10px] text-slate-400 uppercase font-medium block">Trading Venue</span>
-                          <span className="text-slate-900 font-bold text-sm">
+                          <span className="text-[10px] text-slate-500 uppercase font-medium block">Trading Venue</span>
+                          <span className="text-slate-900 font-semibold text-sm">
                             {preparedSwap.summary?.routeType || 'Meteora DLMM'}
                           </span>
                         </div>
                         <div>
                           <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${
+                            className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider border ${
                               preparedSwap.summary?.venueStatus === 'VERIFIED'
                                 ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                                 : 'bg-rose-50 text-rose-700 border-rose-200'
                             }`}
                           >
-                            {preparedSwap.summary?.venueStatus === 'VERIFIED' ? '✓ Verified Venue' : '⚠️ Unverified Venue'}
+                            {preparedSwap.summary?.venueStatus === 'VERIFIED' ? 'Verified Venue' : 'Unverified Venue'}
                           </span>
                         </div>
                       </div>
@@ -1778,7 +1772,6 @@ export default function Home() {
                       {preparedSwap.warnings && preparedSwap.warnings.length > 0 && (
                         <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200/80 text-amber-900 text-xs space-y-1">
                           <div className="font-semibold text-xs text-amber-900 flex items-center gap-1.5">
-                            <span>⚠️</span>
                             <span>
                               {cleanReasons(preparedSwap.warnings).toLowerCase().includes('exit cost')
                                 ? 'Selling back right now would cost more than usual'
@@ -1795,7 +1788,7 @@ export default function Home() {
                       <div className="space-y-2.5 bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs">
                         <div className="flex justify-between text-slate-600">
                           <span>USDC Spend (Hard Capped):</span>
-                          <span className="text-slate-900 font-bold font-mono">${(preparedSwap.summary?.spendUsdc ?? 0).toFixed(2)}</span>
+                          <span className="text-slate-900 font-semibold font-mono">${(preparedSwap.summary?.spendUsdc ?? 0).toFixed(2)}</span>
                         </div>
                         <div className="flex justify-between text-slate-600">
                           <span>Executable Price:</span>
@@ -1807,24 +1800,24 @@ export default function Home() {
                         </div>
                         <div className="flex justify-between text-slate-600">
                           <span>Valuation Markup:</span>
-                          <span className={(preparedSwap.summary?.premiumVsMarkPct ?? 0) > 5 ? 'text-rose-600 font-bold font-mono' : 'text-emerald-700 font-semibold font-mono'}>
+                          <span className={(preparedSwap.summary?.premiumVsMarkPct ?? 0) > 5 ? 'text-rose-600 font-semibold font-mono' : 'text-emerald-700 font-semibold font-mono'}>
                             {(preparedSwap.summary?.premiumVsMarkPct ?? 0) >= 0 ? '+' : ''}{(preparedSwap.summary?.premiumVsMarkPct ?? 0).toFixed(1)}%
                           </span>
                         </div>
                         <div className="pt-2 border-t border-slate-200/80 flex justify-between text-slate-800 font-medium">
                           <span>Expected Net Tokens:</span>
-                          <span className="text-emerald-700 font-bold font-mono">
+                          <span className="text-emerald-700 font-semibold font-mono">
                             {(preparedSwap.summary?.expectedNetTokens ?? 0).toFixed(6)} {preparedSwap.summary?.symbol || ''}
                           </span>
                         </div>
-                        <div className="flex justify-between text-slate-500 text-[11px]">
+                        <div className="flex justify-between text-slate-600 text-[11px]">
                           <span>Guaranteed Minimum (Slippage + Fee):</span>
                           <span className="text-slate-700 font-mono">
                             {(preparedSwap.summary?.minReceivedTokens ?? 0).toFixed(6)}
                           </span>
                         </div>
                         {preparedSwap.summary?.feeNote && (
-                          <div className="text-[11px] text-slate-500 pt-1.5 border-t border-slate-200/60">
+                          <div className="text-[11px] text-slate-600 pt-1.5 border-t border-slate-200/60">
                             {preparedSwap.summary.feeNote}
                           </div>
                         )}
@@ -1859,7 +1852,6 @@ export default function Home() {
                             onClick={handleConfirmAndSign}
                             className="w-full py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition flex items-center justify-center gap-2 cursor-pointer text-xs shadow-2xs"
                           >
-                            <span>⚡</span>
                             <span>Proceed to Sign in Phantom</span>
                           </button>
                         )}
@@ -1882,7 +1874,7 @@ export default function Home() {
                   <div className="text-slate-900 font-semibold text-sm">
                     Waiting for manual approval in Phantom wallet...
                   </div>
-                  <div className="text-xs text-slate-500">
+                  <div className="text-xs text-slate-600">
                     Check your Phantom extension window to review and sign.
                   </div>
                 </div>
@@ -1895,7 +1887,7 @@ export default function Home() {
                   <div className="text-slate-900 font-semibold text-sm">
                     Transaction broadcast to Solana network...
                   </div>
-                  <div className="text-xs text-slate-500">
+                  <div className="text-xs text-slate-600">
                     Polling confirmation statuses via secure RPC proxy
                   </div>
                 </div>
@@ -1905,7 +1897,7 @@ export default function Home() {
               {buyStep === 'SUCCESS' && (swapReceipt || basketReceipts.length > 0) && (
                 <div className="space-y-4">
                   <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-medium">
-                    ✓ {isBasketMode ? `${basketReceipts.length} basket legs successfully confirmed on Solana mainnet!` : 'Swap transaction successfully confirmed on Solana mainnet!'}
+                    {isBasketMode ? `${basketReceipts.length} basket legs successfully confirmed on Solana mainnet!` : 'Swap transaction successfully confirmed on Solana mainnet!'}
                   </div>
 
                   {isBasketMode && basketReceipts.length > 0 ? (
@@ -1916,7 +1908,7 @@ export default function Home() {
                             <span className="font-semibold text-slate-900">{rcpt.symbol}</span>
                             <span className="text-slate-900 font-mono font-semibold">${rcpt.amountUsdc.toFixed(2)} USDC</span>
                           </div>
-                          <div className="flex justify-between text-slate-500 text-[11px]">
+                          <div className="flex justify-between text-slate-600 text-[11px]">
                             <span>Delivered:</span>
                             <span className="text-slate-800 font-mono font-semibold">~{rcpt.expectedNetTokens.toFixed(6)} tokens</span>
                           </div>
@@ -1949,7 +1941,7 @@ export default function Home() {
                       </div>
                       <div className="flex justify-between text-slate-600">
                         <span>Actual Tokens Received:</span>
-                        <span className="text-emerald-700 font-bold font-mono">
+                        <span className="text-emerald-700 font-semibold font-mono">
                           {swapReceipt.actualTokensReceived !== null ? swapReceipt.actualTokensReceived.toFixed(6) : '—'}
                         </span>
                       </div>
@@ -1968,7 +1960,7 @@ export default function Home() {
                         <span className="text-slate-700 font-mono">{swapReceipt.minTokens.toFixed(6)}</span>
                       </div>
                       <div className="pt-2 border-t border-slate-200/80 flex flex-col gap-1">
-                        <span className="text-slate-500 text-[11px]">Solscan Explorer Link:</span>
+                        <span className="text-slate-600 text-[11px]">Solscan Explorer Link:</span>
                         <a
                           href={swapReceipt.solscanUrl}
                           target="_blank"
@@ -1978,7 +1970,7 @@ export default function Home() {
                           {swapReceipt.signature} ↗
                         </a>
                       </div>
-                      <div className="text-[11px] text-slate-500 pt-1 border-t border-slate-200/60">
+                      <div className="text-[11px] text-slate-600 pt-1 border-t border-slate-200/60">
                         Delivered net of Token-2022 transfer fee (1.00%) and AMM execution slippage.
                       </div>
                     </div>
@@ -2041,7 +2033,7 @@ export default function Home() {
                         <span className="text-slate-800 font-mono">{swapReceipt.expectedNetTokens.toFixed(6)}</span>
                       </div>
                       <div className="pt-2 border-t border-slate-200/80 flex flex-col gap-1">
-                        <span className="text-slate-500 text-[11px]">Check Solscan to verify transaction outcome:</span>
+                        <span className="text-slate-600 text-[11px]">Check Solscan to verify transaction outcome:</span>
                         <a
                           href={swapReceipt.solscanUrl}
                           target="_blank"

@@ -1,0 +1,4 @@
+<svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+  <path d="M20 4 L34 10 L34 20 Q34 32 20 38 Q6 32 6 20 L6 10 Z" fill="#059669"/>
+  <text x="20" y="25" text-anchor="middle" fill="#ffffff" font-size="13" font-weight="600" font-family="system-ui, -apple-system, sans-serif">PV</text>
+</svg>
