@@ -71,7 +71,7 @@ const PRESET_MAIN = ['ANTHROPIC', 'ANDURIL', 'FIGUREAI'];
 export default function Home() {
   // Main preset is strictly ANTHROPIC, ANDURIL, FIGUREAI
   const [selectedSymbols, setSelectedSymbols] = useState<string[]>(PRESET_MAIN);
-  const [amountUsdc, setAmountUsdc] = useState<number>(0.90);
+  const [amountUsdc, setAmountUsdc] = useState<number>(3.00);
   const [clampNote, setClampNote] = useState<string | null>(null);
   const [maxPremium, setMaxPremium] = useState<number>(5);
   const [maxImpact, setMaxImpact] = useState<number>(2);
@@ -88,6 +88,66 @@ export default function Home() {
     source: string;
     rateLimitCooldownSeconds: number | null;
   } | null>(null);
+
+  const [expandedSymbols, setExpandedSymbols] = useState<string[]>(['FIGUREAI', 'OPENAI']);
+  const toggleExpand = (symbol: string) => {
+    setExpandedSymbols((prev) =>
+      prev.includes(symbol) ? prev.filter((s) => s !== symbol) : [...prev, symbol]
+    );
+  };
+
+  const getPlainVerdict = (q: TokenQuote) => {
+    if (q.guardStatus === 'BLOCK') {
+      const reasons = q.blockedReasons && q.blockedReasons.length > 0
+        ? q.blockedReasons.map((r) => r.trim().replace(/\.+$/, '')).join('; ')
+        : (q.error || 'Blocked by valuation guard');
+      return {
+        text: `Blocked: ${reasons}`,
+        severity: 'block'
+      };
+    }
+
+    if (q.guardStatus === 'WARN') {
+      const warningsText = (q.warnings || []).join(' ').toLowerCase();
+
+      // 1. Premium above threshold
+      if (q.premiumVsMarkPct !== null && q.premiumVsMarkPct > maxPremium) {
+        return {
+          text: `Trading +${q.premiumVsMarkPct.toFixed(1)}% above fair value`,
+          severity: 'warn'
+        };
+      }
+
+      // 2. Exit cost exceeding 3%
+      if ((q.roundTripLossPct !== null && q.roundTripLossPct > 3.0) || warningsText.includes('exit cost') || warningsText.includes('round-trip')) {
+        return {
+          text: 'Selling back right now would cost more than usual',
+          severity: 'warn'
+        };
+      }
+
+      // 3. Pool impact noise
+      if (warningsText.includes('pool impact is high') || warningsText.includes('size impact is unverified') || warningsText.includes('different venues')) {
+        return {
+          text: 'Minor caution, likely not a real issue',
+          severity: 'warn-soft'
+        };
+      }
+
+      const cleanWarn = q.warnings && q.warnings.length > 0
+        ? q.warnings[0].trim().replace(/\.+$/, '')
+        : 'Caution: check details before trading';
+      return {
+        text: cleanWarn,
+        severity: 'warn'
+      };
+    }
+
+    return {
+      text: 'Fair price — looks good',
+      severity: 'pass'
+    };
+  };
 
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -226,15 +286,29 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [buyStep, preparedAt]);
 
-  // Auto-trigger dry run if URL contains ?dryrun=1 (for headless verification)
+  // Support custom token selection or auto-trigger via query params
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.location.search.includes('dryrun=1')) {
-      const timer = setTimeout(() => {
-        handleInitiateBasketBuy();
-      }, 800);
-      return () => clearTimeout(timer);
+    if (typeof window !== 'undefined' && window.location.search) {
+      const params = new URLSearchParams(window.location.search);
+      const tokensParam = params.get('tokens');
+      if (tokensParam) {
+        setSelectedSymbols(tokensParam.split(',').map((s) => s.trim().toUpperCase()));
+      }
     }
   }, []);
+
+  // Auto-trigger single token buy or dry run once quotes finish loading
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.search && !loading && quotes.length > 0 && buyStep === 'IDLE') {
+      const params = new URLSearchParams(window.location.search);
+      const buyParam = params.get('buy');
+      if (buyParam) {
+        handleInitiateBuy(buyParam.trim().toUpperCase());
+      } else if (window.location.search.includes('dryrun=1')) {
+        handleInitiateBasketBuy();
+      }
+    }
+  }, [loading, quotes, buyStep]);
 
   // Fetch balances whenever connected address changes
   useEffect(() => {
@@ -279,20 +353,15 @@ export default function Home() {
     setBuyError(null);
     setUserConfirmedWarn(confirmedWarn);
 
-    // If wallet is not connected, prompt to connect
-    if (!wallet.publicKey) {
-      setBuyStep('ERROR');
-      setBuyError('Please connect your Phantom wallet to initiate a single-token swap.');
-      return;
-    }
-
-    // Check if live buying is disabled (never return a raw 403 to user)
+    // Check if live buying is disabled (dry-run preview mode)
     if (!isRealBuyLive) {
       const q = quotes.find((t) => t.symbol === symbol);
+      const isWarn = q?.guardStatus === 'WARN' || (q?.warnings && q.warnings.length > 0);
       setPreparedSwap({
         isDemo: true,
         guardStatus: q?.guardStatus || 'PASS',
         warnings: q?.warnings || [],
+        requiresExplicitConfirm: Boolean(isWarn && !confirmedWarn),
         summary: {
           symbol,
           name: q?.name || symbol,
@@ -308,7 +377,15 @@ export default function Home() {
           activeFeePct: 0.50
         }
       });
+      setPreparedAt(Date.now());
       setBuyStep('CONFIRMING');
+      return;
+    }
+
+    // If wallet is not connected, prompt to connect
+    if (!wallet.publicKey) {
+      setBuyStep('ERROR');
+      setBuyError('Please connect your Phantom wallet to initiate a single-token swap.');
       return;
     }
 
@@ -838,89 +915,96 @@ export default function Home() {
   ) || Boolean(prestocksStatus?.isStale);
 
   return (
-    <div className="min-h-screen bg-[#09090b] text-[#fafafa] flex flex-col justify-between">
+    <div className="min-h-screen bg-[#f8fafc] text-slate-900 flex flex-col justify-between">
       {/* Top Navigation */}
-      <header className="border-b border-[#27272a] bg-[#0c0c0e]/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-4 py-3.5 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="h-8 w-8 rounded-lg bg-gradient-to-tr from-[#14f195] to-[#9945ff] flex items-center justify-center font-bold text-black text-sm">
+      <header className="border-b border-slate-200/80 bg-white/90 backdrop-blur-md sticky top-0 z-50 shadow-2xs">
+        <div className="max-w-6xl mx-auto px-2.5 sm:px-6 py-3 flex items-center justify-between gap-1.5 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <div className="h-8 w-8 rounded-lg bg-slate-900 flex items-center justify-center font-bold text-white text-xs tracking-wider shadow-xs shrink-0">
               PV
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-lg tracking-tight">PreVal</span>
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <span className="font-semibold text-slate-900 text-base sm:text-lg tracking-tight">PreVal</span>
                 <span
-                  className={`text-[11px] font-mono uppercase px-2 py-0.5 rounded-full border ${
+                  className={`text-[10px] sm:text-[11px] font-medium px-1.5 sm:px-2.5 py-0.5 rounded-full border inline-flex items-center gap-1 sm:gap-1.5 whitespace-nowrap ${
                     isRealBuyLive
-                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                      : 'bg-[#14f195]/10 text-[#14f195] border-[#14f195]/30'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : 'bg-slate-100 text-slate-600 border-slate-200'
                   }`}
                 >
-                  {isRealBuyLive ? 'Live Buying Enabled (max $2)' : 'Preview Mode (live buying off in this demo)'}
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isRealBuyLive ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
+                  <span className="hidden sm:inline">
+                    {isRealBuyLive ? 'Live Buying Enabled (max $2)' : 'Preview Mode (live buying off in this demo)'}
+                  </span>
+                  <span className="sm:hidden">
+                    {isRealBuyLive ? 'Live' : 'Preview'}
+                  </span>
                 </span>
               </div>
-              <p className="text-xs text-[#a1a1aa] hidden sm:block">
+              <p className="text-[11px] text-slate-400 hidden sm:block font-normal mt-0.5">
                 Guarded PreStocks Basket on Solana
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             {/* Wallet balances if connected */}
             {wallet.connected && wallet.publicKey && (
-              <div className="hidden md:flex items-center gap-2 bg-[#18181b] border border-[#27272a] px-3 py-1.5 rounded-lg text-xs font-mono">
-                <span className="text-[#a1a1aa]">SOL:</span>
-                <span className="text-[#fafafa] font-bold">{balanceLoading ? '...' : (solBalance ?? 0)}</span>
-                <span className="text-[#3f3f46]">|</span>
-                <span className="text-[#a1a1aa]">USDC:</span>
-                <span className="text-[#14f195] font-bold">${balanceLoading ? '...' : (usdcBalance ?? 0).toFixed(2)}</span>
+              <div className="hidden md:flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg text-xs font-mono text-slate-600">
+                <span className="text-slate-400">SOL:</span>
+                <span className="text-slate-900 font-semibold">{balanceLoading ? '...' : (solBalance ?? 0)}</span>
+                <span className="text-slate-300">|</span>
+                <span className="text-slate-400">USDC:</span>
+                <span className="text-emerald-600 font-semibold">${balanceLoading ? '...' : (usdcBalance ?? 0).toFixed(2)}</span>
               </div>
             )}
 
             <button
               onClick={() => fetchQuotes()}
               disabled={loading}
-              className="text-xs font-mono px-3 py-1.5 rounded-md border border-[#27272a] hover:bg-[#18181b] transition flex items-center gap-2 text-[#a1a1aa] hover:text-[#fafafa]"
+              className="text-[11px] sm:text-xs font-mono px-2 sm:px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition flex items-center gap-1.5 text-slate-700 hover:text-slate-900 shadow-2xs shrink-0 cursor-pointer"
+              title="Click to refresh quotes"
             >
-              <span className={`inline-block h-2 w-2 rounded-full ${loading ? 'bg-amber-400 animate-ping' : 'bg-[#14f195]'}`}></span>
-              {loading ? 'Refreshing...' : `Refreshes in ${secondsRemaining}s`}
+              <span className={`inline-block h-2 w-2 rounded-full shrink-0 ${loading ? 'bg-amber-400 animate-ping' : 'bg-emerald-500'}`}></span>
+              <span className="font-medium">{loading ? 'Refreshing...' : `Refreshes in ${secondsRemaining}s`}</span>
             </button>
 
             {/* Phantom Connect Wallet button */}
-            <div className="wallet-button-wrapper">
-              <WalletMultiButton className="!bg-[#18181b] hover:!bg-[#27272a] !border !border-[#3f3f46] hover:!border-[#14f195] !rounded-lg !text-xs !font-mono !h-9 !py-0 !px-3.5 !transition" />
+            <div className="wallet-button-wrapper shrink-0">
+              <WalletMultiButton className="!bg-slate-900 hover:!bg-slate-800 !text-white !font-medium !text-xs !rounded-lg !h-9 !py-0 !px-2.5 sm:!px-3.5 !transition !shadow-xs" />
             </div>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="max-w-6xl mx-auto px-4 py-8 w-full space-y-8 flex-1">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8 w-full space-y-8 flex-1">
         {/* Pitch Hero */}
-        <div className="space-y-2">
-          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
+        <div className="pt-2 sm:pt-4 pb-1 space-y-3 max-w-3xl">
+          <h1 className="text-3xl sm:text-4xl lg:text-[40px] font-bold tracking-tight text-slate-900 leading-[1.2]">
             Buy the private AI & frontier-tech wave in one click,{' '}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#14f195] to-[#9945ff]">
+            <span className="text-emerald-600 block sm:inline">
               without overpaying.
             </span>
           </h1>
-          <p className="text-sm text-[#a1a1aa] max-w-2xl">
+          <p className="text-base sm:text-lg text-slate-500 leading-relaxed font-normal max-w-2xl">
             Compares live Jupiter prices with PreStocks' mark price and checks pool depth before you buy.
           </p>
         </div>
 
         {/* Controls Card */}
-        <div className="bg-[#121215] border border-[#27272a] rounded-xl p-5 sm:p-6 shadow-xl space-y-6">
-          <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[#27272a]">
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 shadow-xs space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-100">
             <div>
-              <h2 className="text-sm font-semibold text-[#fafafa] uppercase tracking-wider font-mono">
+              <h2 className="text-sm font-semibold text-slate-900 tracking-tight">
                 1. Configure Your Basket
               </h2>
-              <p className="text-xs text-[#a1a1aa]">Select preset or toggle individual tokens</p>
+              <p className="text-xs text-slate-500 mt-0.5">Select preset or toggle individual tokens</p>
             </div>
             <button
               onClick={applyPreset}
-              className="text-xs font-medium px-3 py-1.5 bg-[#18181b] border border-[#3f3f46] hover:border-[#14f195] rounded-md transition text-[#fafafa]"
+              className="text-xs font-medium px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-slate-700 transition shadow-2xs cursor-pointer"
             >
               Reset to Main Preset (Anthropic + Anduril + Figure)
             </button>
@@ -935,21 +1019,21 @@ export default function Home() {
                 <button
                   key={t.symbol}
                   onClick={() => toggleToken(t.symbol)}
-                  className={`px-3 py-2 rounded-lg border text-left transition flex items-center gap-2 text-xs ${
+                  className={`px-3 py-2 rounded-lg border text-left transition flex items-center gap-2 text-xs cursor-pointer ${
                     isSelected
-                      ? 'bg-[#18181b] border-[#14f195] text-[#fafafa] shadow-[0_0_12px_rgba(20,241,149,0.15)]'
-                      : 'bg-[#0f0f11] border-[#27272a] text-[#71717a] hover:border-[#3f3f46]'
+                      ? 'bg-emerald-50/80 border-emerald-500 text-slate-900 shadow-2xs'
+                      : 'bg-slate-50/70 border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-100/60'
                   }`}
                 >
                   <span
-                    className={`h-2 w-2 rounded-full ${
-                      isSelected ? (isHighMarkupCandidate ? 'bg-rose-500' : 'bg-[#14f195]') : 'bg-zinc-600'
+                    className={`h-2 w-2 rounded-full shrink-0 ${
+                      isSelected ? (isHighMarkupCandidate ? 'bg-rose-500' : 'bg-emerald-500') : 'bg-slate-300'
                     }`}
                   />
                   <div>
-                    <span className="font-bold">{t.symbol}</span>
+                    <span className="font-semibold">{t.symbol}</span>
                     {isHighMarkupCandidate && (
-                      <span className="ml-1.5 text-[10px] text-rose-400 font-mono">
+                      <span className="ml-1.5 text-[10px] text-rose-600 font-medium">
                         (high premium)
                       </span>
                     )}
@@ -962,11 +1046,11 @@ export default function Home() {
           {/* Parameter Inputs */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
             <div>
-              <label className="block text-xs font-mono uppercase text-[#a1a1aa] mb-1.5">
-                Total USDC Amount (Max $25)
+              <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                Total USDC Amount
               </label>
               <div className="relative">
-                <span className="absolute left-3 top-2.5 text-xs text-[#71717a]">$</span>
+                <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-medium">$</span>
                 <input
                   type="number"
                   min={0.10}
@@ -980,18 +1064,18 @@ export default function Home() {
                     if (val > 25) setAmountUsdc(25);
                     else setAmountUsdc(val);
                   }}
-                  className="w-full bg-[#0a0a0c] border border-[#27272a] focus:border-[#14f195] rounded-md pl-7 pr-3 py-2 text-sm text-[#fafafa] outline-none font-mono"
+                  className="w-full bg-slate-50 focus:bg-white border border-slate-200 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 rounded-lg pl-7 pr-3 py-2 text-sm text-slate-900 font-mono font-medium outline-none transition shadow-2xs"
                 />
               </div>
-              <span className="text-[10px] text-[#71717a] mt-1 block">Live buys in this demo are capped at $3 (basket) and $2 (single token).</span>
+              <span className="text-[11px] text-slate-400 mt-1.5 block">Live buys in this demo are capped at $3 (basket) and $2 (single token).</span>
               {clampNote && (
-                <div className="text-[11px] text-amber-400 font-mono mt-1">{clampNote}</div>
+                <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200/80 rounded-md px-2 py-1 font-mono mt-1.5">{clampNote}</div>
               )}
             </div>
 
             <div>
-              <label className="block text-xs font-mono uppercase text-[#a1a1aa] mb-1.5">
-                Max Allowed Markup vs Mark
+              <label className="block text-xs font-medium text-slate-700 mb-1.5">
+                Most I'll pay above fair price
               </label>
               <div className="relative">
                 <input
@@ -1002,15 +1086,15 @@ export default function Home() {
                   autoComplete="off"
                   spellCheck={false}
                   onChange={(e) => setMaxPremium(Number(e.target.value))}
-                  className="w-full bg-[#0a0a0c] border border-[#27272a] focus:border-[#14f195] rounded-md pl-3 pr-7 py-2 text-sm text-[#fafafa] outline-none font-mono"
+                  className="w-full bg-slate-50 focus:bg-white border border-slate-200 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 rounded-lg pl-3 pr-7 py-2 text-sm text-slate-900 font-mono font-medium outline-none transition shadow-2xs"
                 />
-                <span className="absolute right-3 top-2.5 text-xs text-[#71717a]">%</span>
+                <span className="absolute right-3 top-2.5 text-xs text-slate-400 font-medium">%</span>
               </div>
-              <span className="text-[10px] text-[#71717a] mt-1 block">Default: +5.0% above mark price</span>
+              <span className="text-[11px] text-slate-400 mt-1.5 block">Default: +5.0% above mark price</span>
             </div>
 
             <div>
-              <label className="block text-xs font-mono uppercase text-[#a1a1aa] mb-1.5">
+              <label className="block text-xs font-medium text-slate-700 mb-1.5">
                 Max Price Impact
               </label>
               <div className="relative">
@@ -1023,37 +1107,39 @@ export default function Home() {
                   autoComplete="off"
                   spellCheck={false}
                   onChange={(e) => setMaxImpact(Number(e.target.value))}
-                  className="w-full bg-[#0a0a0c] border border-[#27272a] focus:border-[#14f195] rounded-md pl-3 pr-7 py-2 text-sm text-[#fafafa] outline-none font-mono"
+                  className="w-full bg-slate-50 focus:bg-white border border-slate-200 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 rounded-lg pl-3 pr-7 py-2 text-sm text-slate-900 font-mono font-medium outline-none transition shadow-2xs"
                 />
-                <span className="absolute right-3 top-2.5 text-xs text-[#71717a]">%</span>
+                <span className="absolute right-3 top-2.5 text-xs text-slate-400 font-medium">%</span>
               </div>
-              <span className="text-[10px] text-[#71717a] mt-1 block">Default: 2.0% empirical impact threshold</span>
+              <span className="text-[11px] text-slate-400 mt-1.5 block">Default: 2.0% empirical impact threshold</span>
             </div>
           </div>
         </div>
 
-        {/* Live Quote Table & Mobile Cards */}
-        <div className="bg-[#121215] border border-[#27272a] rounded-xl overflow-hidden shadow-xl">
-          <div className="px-5 py-4 border-b border-[#27272a] flex flex-wrap items-center justify-between gap-3 bg-[#0c0c0e]">
+        {/* Live Valuation & Guard Verification Card */}
+        <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
+          {/* Section Header */}
+          <div className="px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3 bg-white">
             <div>
-              <h2 className="text-sm font-semibold text-[#fafafa] uppercase tracking-wider font-mono">
-                2. Live Valuation & Guard Verification
+              <h2 className="text-sm font-semibold text-slate-900 tracking-tight flex items-center gap-2">
+                <span className="flex items-center justify-center w-5 h-5 rounded-full bg-slate-100 text-slate-700 text-xs font-semibold">2</span>
+                Live Valuation & Guard Verification
               </h2>
-              <p className="text-xs text-[#a1a1aa]">
+              <p className="text-xs text-slate-500 mt-0.5">
                 Quotes fetched via Jupiter and compared with PreStocks' mark prices
               </p>
             </div>
-            <div className="flex items-center gap-2 font-mono text-xs">
-              <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+            <div className="flex items-center gap-2 text-xs font-medium">
+              <span className="text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
                 {passCount} Pass
               </span>
               {warnCount > 0 && (
-                <span className="text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                <span className="text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">
                   {warnCount} Warn
                 </span>
               )}
               {blockedCount > 0 && (
-                <span className="text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded border border-rose-500/20">
+                <span className="text-rose-700 bg-rose-50 px-2.5 py-0.5 rounded-full border border-rose-200">
                   {blockedCount} Blocked
                 </span>
               )}
@@ -1062,26 +1148,26 @@ export default function Home() {
 
           {/* Top of Results: Rate limited or Stale-if-error notice */}
           {prestocksStatus && (prestocksStatus.isRateLimited || prestocksStatus.isStale) && (
-            <div className="p-4 bg-amber-950/30 border-b border-amber-800/60 flex items-center justify-between gap-3 text-xs font-mono text-amber-300">
+            <div className="p-3.5 bg-amber-50 border-b border-amber-200/80 flex items-center justify-between gap-3 text-xs text-amber-800">
               <div className="flex items-center gap-2">
-                <span className="text-amber-400 font-bold">⚠️</span>
+                <span>⚠️</span>
                 <span>
                   {prestocksStatus.isRateLimited
                     ? `PreStocks data is temporarily rate-limited. Showing last good data from ${prestocksStatus.dataAgeSeconds > 60 ? `${Math.floor(prestocksStatus.dataAgeSeconds / 60)} minute(s)` : `${prestocksStatus.dataAgeSeconds}s`} ago.`
                     : `PreStocks mark prices are cached (${prestocksStatus.dataAgeSeconds}s old).`}
                 </span>
               </div>
-              <span className="text-[11px] text-amber-400/80 uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20">
+              <span className="text-[11px] font-medium text-amber-700 uppercase tracking-wider px-2 py-0.5 rounded bg-amber-100/60 border border-amber-200">
                 Preview Only — Buy Disabled
               </span>
             </div>
           )}
 
-          {/* Top of Results: Highlight blocked tokens & instant re-split button (Item 14) */}
+          {/* Top of Results: Highlight blocked tokens & instant re-split button */}
           {hasBlockedTokens && (
-            <div className="p-4 bg-rose-950/20 border-b border-rose-900/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-              <div className="text-xs font-mono text-rose-300">
-                <span className="font-bold">🔴 {blockedNames}</span>{' '}
+            <div className="p-3.5 bg-rose-50 border-b border-rose-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="text-xs text-rose-800 font-medium">
+                <span className="font-semibold text-rose-900">🔴 {blockedNames}</span>{' '}
                 {isStaleDataBlock ? (
                   <span>
                     blocked: data is {prestocksStatus?.dataAgeSeconds || quotes[0]?.quoteAgeSeconds || 'stale'}s old; preview only.
@@ -1092,413 +1178,278 @@ export default function Home() {
                   </span>
                 )}
               </div>
-              {/* Excluding tokens cannot fix stale data: hide button when block is due to staleness */}
               {!isStaleDataBlock && (
                 <button
                   onClick={excludeBlockedTokens}
-                  className="text-xs font-mono font-medium px-3.5 py-1.5 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 border border-rose-500/40 transition flex items-center gap-1.5 shrink-0"
+                  className="text-xs font-medium px-3 py-1.5 rounded-lg bg-white hover:bg-rose-100/80 text-rose-700 border border-rose-200 transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-2xs"
                 >
                   <span>🛡️</span>
-                  <span>Exclude blocked and re-split ${amountUsdc}</span>
+                  <span>Exclude blocked and re-split ${amountUsdc.toFixed(2)}</span>
                 </button>
               )}
             </div>
           )}
 
-          {/* Loading bar indicator for 3-5 second quote requests */}
+          {/* Loading bar indicator for quote requests */}
           {loading && (
-            <div className="h-1 w-full bg-zinc-900 overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-teal-400 via-emerald-400 to-indigo-500 animate-pulse w-full"></div>
+            <div className="h-1 w-full bg-slate-100 overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-emerald-400 via-teal-400 to-indigo-500 animate-pulse w-full"></div>
             </div>
           )}
 
           {error && (
-            <div className="p-4 bg-rose-950/30 border-b border-rose-800 text-rose-300 text-xs font-mono">
+            <div className="p-3.5 bg-rose-50 border-b border-rose-200 text-rose-700 text-xs">
               ⚠️ {error}
             </div>
           )}
 
-          {/* DESKTOP VIEW: Table (Hidden below 640px) */}
-          <div className="hidden sm:block overflow-x-auto">
-            <table className="w-full text-left text-xs font-mono">
-              <thead className="bg-[#18181b]/60 text-[#a1a1aa] uppercase text-[11px] border-b border-[#27272a]">
-                <tr>
-                  <th className="px-4 py-3">Token</th>
-                  <th className="px-4 py-3">Allocated</th>
-                  <th className="px-4 py-3">PreStocks Mark</th>
-                  <th className="px-4 py-3">Executable Price</th>
-                  <th className="px-4 py-3">Spread vs Mark</th>
-                  <th className="px-4 py-3">Pool impact (Jupiter)</th>
-                  <th className="px-4 py-3">Empirical impact ($X vs $1)</th>
-                  <th className="px-4 py-3">Exit Cost</th>
-                  <th className="px-3 py-3">Quote Age</th>
-                  <th className="px-3 py-3">Route</th>
-                  <th className="px-3 py-3">Guard Verdict</th>
-                  <th className="px-3 py-3 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#27272a]">
-                {loading && quotes.length === 0 ? (
-                  <tr>
-                    <td colSpan={12} className="px-4 py-8 text-center text-[#71717a]">
-                      <div className="inline-flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full bg-[#14f195] animate-ping"></span>
-                        Fetching live on-chain quotes and reading Token-2022 extensions...
-                      </div>
-                    </td>
-                  </tr>
-                ) : quotes.length === 0 ? (
-                  <tr>
-                    <td colSpan={12} className="px-4 py-8 text-center text-[#71717a]">
-                      No tokens selected. Select at least one token above.
-                    </td>
-                  </tr>
-                ) : (
-                  quotes.map((q) => {
-                    const isBlocked = q.guardStatus === 'BLOCK';
-                    const isWarn = q.guardStatus === 'WARN';
-
-                    return (
-                      <tr
-                        key={q.symbol}
-                        className={`transition hover:bg-[#18181b]/50 ${
-                          isBlocked ? 'bg-rose-950/10' : isWarn ? 'bg-amber-950/10' : ''
-                        }`}
-                      >
-                        <td className="px-4 py-3.5 font-bold text-white">
-                          <div>{q.symbol}</div>
-                          <div className="text-[10px] text-[#71717a] font-sans font-normal truncate max-w-[140px]">
-                            {q.name}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3.5 text-[#fafafa] font-semibold">
-                          ${q.allocatedUsdc.toFixed(2)}
-                        </td>
-                        <td className="px-4 py-3.5 text-[#a1a1aa]">
-                          ${q.markPrice.toFixed(2)}
-                        </td>
-                        <td className="px-4 py-3.5 text-[#fafafa]">
-                          {q.executablePrice ? (
-                            <div>
-                              <div>${q.executablePrice.toFixed(2)}</div>
-                              {q.feeNote && (
-                                <div className="text-[10px] text-teal-400 font-sans font-normal mt-0.5">
-                                  {q.feeNote}
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-zinc-500 italic">
-                              {q.errorCode === 'RATE_LIMITED' || q.errorCode === 'SERVICE_UNAVAILABLE'
-                                ? 'Unavailable'
-                                : 'No route'}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3.5">
-                          {q.premiumVsMarkPct !== null ? (
-                            <span
-                              className={`font-semibold ${
-                                q.premiumVsMarkPct > maxPremium
-                                  ? 'text-rose-400'
-                                  : q.premiumVsMarkPct < 0
-                                  ? 'text-emerald-400'
-                                  : 'text-zinc-200'
-                              }`}
-                            >
-                              {q.premiumVsMarkPct >= 0 ? '+' : ''}
-                              {q.premiumVsMarkPct.toFixed(1)}%
-                            </span>
-                          ) : (
-                            'N/A'
-                          )}
-                        </td>
-                        <td className="px-4 py-3.5">
-                          {q.poolImpactJupiter !== null ? (
-                            <span
-                              className={
-                                q.poolImpactJupiter > maxImpact ? 'text-amber-400 font-semibold' : 'text-zinc-300'
-                              }
-                            >
-                              {q.poolImpactJupiter.toFixed(2)}%
-                            </span>
-                          ) : (
-                            'N/A'
-                          )}
-                        </td>
-                        <td className="px-4 py-3.5">
-                          {q.empiricalImpactPct !== null ? (
-                            <span
-                              className={
-                                q.empiricalImpactPct > maxImpact ? 'text-rose-400 font-semibold' : 'text-zinc-300'
-                              }
-                            >
-                              {q.empiricalImpactPct.toFixed(2)}%
-                            </span>
-                          ) : (
-                            'N/A'
-                          )}
-                        </td>
-                        <td className="px-4 py-3.5">
-                          {q.roundTripLossPct !== null ? (
-                            <span
-                              className={
-                                q.roundTripLossPct > 3 ? 'text-amber-400 font-semibold' : 'text-zinc-300'
-                              }
-                            >
-                              {q.roundTripLossPct.toFixed(2)}%
-                              {q.roundTripLossPct > 3 && ' ⚠️'}
-                            </span>
-                          ) : (
-                            'N/A'
-                          )}
-                        </td>
-                        <td className="px-4 py-3.5 text-[#71717a]">
-                          {q.hasRoute ? `${q.quoteAgeSeconds}s` : '—'}
-                        </td>
-                        <td className="px-4 py-3.5 text-zinc-300 text-[11px]">
-                          {q.hasRoute && q.routeType ? (
-                            <span className="px-2 py-0.5 rounded bg-zinc-800/80 border border-zinc-700">
-                              {q.routeType}
-                            </span>
-                          ) : (
-                            <span className="text-zinc-600">—</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3.5">
-                          {isBlocked ? (
-                            <div className="space-y-1">
-                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/30">
-                                🔴 BLOCKED
-                              </span>
-                              <div className="text-[10px] text-rose-300 max-w-xs font-sans">
-                                {cleanReasons(q.blockedReasons)}
-                              </div>
-                            </div>
-                          ) : isWarn ? (
-                            <div className="space-y-1">
-                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30">
-                                🟡 WARN
-                              </span>
-                              <div className="text-[10px] text-amber-300 max-w-xs font-sans">
-                                {cleanReasons(q.warnings)}
-                              </div>
-                            </div>
-                          ) : (
-                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                              🟢 PASS
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3.5 text-right">
-                          <button
-                            onClick={() => handleInitiateBuy(q.symbol)}
-                            disabled={!isRealBuyLive || isBlocked || loading || buyStep === 'PREPARING'}
-                            className={`px-3 py-1.5 rounded text-xs font-mono font-bold transition flex items-center gap-1 ml-auto ${
-                              !isRealBuyLive
-                                ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed border border-zinc-700/50'
-                                : isBlocked
-                                ? 'bg-zinc-800 text-zinc-600 cursor-not-allowed border border-zinc-800'
-                                : 'bg-[#14f195]/10 hover:bg-[#14f195]/20 text-[#14f195] border border-[#14f195]/40 hover:border-[#14f195]'
-                            }`}
-                            title={isBlocked ? "Blocked by guard" : !isRealBuyLive ? "Live buying is off in this demo" : "Buy single token (max $2)"}
-                          >
-                            <span>⚡</span>
-                            <span>Buy</span>
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* MOBILE VIEW: One card per token (Visible below 640px) */}
-          <div className="block sm:hidden divide-y divide-[#27272a]">
+          {/* Token Rows */}
+          <div className="divide-y divide-slate-100">
             {loading && quotes.length === 0 ? (
-              <div className="p-6 text-center text-[#71717a] text-xs font-mono">
-                Fetching live quotes and verifying valuations...
+              <div className="p-8 text-center text-slate-500 text-xs">
+                <div className="inline-flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping"></span>
+                  Fetching live on-chain quotes and reading Token-2022 extensions...
+                </div>
               </div>
             ) : quotes.length === 0 ? (
-              <div className="p-6 text-center text-[#71717a] text-xs font-mono">
-                No tokens selected.
+              <div className="p-8 text-center text-slate-500 text-xs">
+                No tokens selected. Select at least one token above.
               </div>
             ) : (
               quotes.map((q) => {
+                const isExpanded = expandedSymbols.includes(q.symbol);
+                const verdict = getPlainVerdict(q);
                 const isBlocked = q.guardStatus === 'BLOCK';
                 const isWarn = q.guardStatus === 'WARN';
 
                 return (
                   <div
                     key={q.symbol}
-                    className={`p-4 space-y-3 ${
-                      isBlocked ? 'bg-rose-950/10' : isWarn ? 'bg-amber-950/10' : 'bg-transparent'
+                    className={`transition-colors ${
+                      isBlocked
+                        ? 'bg-rose-50/30 hover:bg-rose-50/50'
+                        : isExpanded
+                        ? 'bg-slate-50/50'
+                        : 'hover:bg-slate-50/30'
                     }`}
                   >
-                    {/* Top Row: Name, Symbol, Verdict Badge */}
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="font-bold text-sm text-white">{q.symbol}</span>
-                        <div className="text-[10px] text-[#71717a] font-sans">{q.name}</div>
+                    {/* Collapsed / Main Row */}
+                    <div className="p-4 sm:px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+                      {/* Token Identity */}
+                      <div className="flex items-center gap-3 min-w-0 sm:w-1/4">
+                        <span
+                          className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                            isBlocked ? 'bg-rose-500 ring-4 ring-rose-100' : isWarn ? 'bg-amber-500' : 'bg-emerald-500'
+                          }`}
+                        />
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-semibold text-slate-900 text-sm tracking-tight">{q.symbol}</span>
+                            <span className="text-xs text-slate-400 font-normal hidden md:inline truncate max-w-[130px]">
+                              {q.name}
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        {isBlocked ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/30">
-                            🔴 BLOCKED
-                          </span>
-                        ) : isWarn ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30">
-                            🟡 WARN
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                            🟢 PASS
-                          </span>
-                        )}
-                      </div>
-                    </div>
 
-                    {/* Plain English Reason if Blocked or Warned */}
-                    {(isBlocked || isWarn) && (
-                      <div className={`p-2.5 rounded text-xs font-sans ${isBlocked ? 'bg-rose-950/30 text-rose-300 border border-rose-900/40' : 'bg-amber-950/30 text-amber-300 border border-amber-900/40'}`}>
-                        {isBlocked ? cleanReasons(q.blockedReasons) : cleanReasons(q.warnings)}
-                      </div>
-                    )}
-
-                    {/* Primary Numbers: Executable Price & Exit Cost */}
-                    <div className="grid grid-cols-2 gap-2 p-2.5 rounded bg-[#18181b]/50 border border-[#27272a] text-xs font-mono">
-                      <div>
-                        <span className="text-[10px] text-[#71717a] uppercase block">Executable Price</span>
-                        <div className="font-semibold text-white">
+                      {/* Executable Price */}
+                      <div className="text-left sm:text-right sm:w-1/5">
+                        <div className="text-sm font-semibold text-slate-900 font-mono">
                           {q.executablePrice ? `$${q.executablePrice.toFixed(2)}` : (
-                            <span className="text-zinc-500 italic">
-                              {q.errorCode === 'RATE_LIMITED' || q.errorCode === 'SERVICE_UNAVAILABLE' ? 'Unavailable' : 'No route'}
+                            <span className="text-slate-400 italic text-xs font-sans">
+                              {q.errorCode === 'RATE_LIMITED' || q.errorCode === 'SERVICE_UNAVAILABLE'
+                                ? 'Unavailable'
+                                : 'No route'}
                             </span>
                           )}
                         </div>
                         {q.feeNote && (
-                          <div className="text-[9px] text-teal-400 font-sans mt-0.5">
+                          <div className="text-[10px] text-slate-400 font-normal">
                             {q.feeNote}
                           </div>
                         )}
                       </div>
-                      <div>
-                        <span className="text-[10px] text-[#71717a] uppercase block">Exit Cost</span>
-                        <div className="font-semibold text-white">
-                          {q.roundTripLossPct !== null ? (
-                            <span className={q.roundTripLossPct > 3 ? 'text-amber-400' : 'text-zinc-300'}>
-                              {q.roundTripLossPct.toFixed(2)}% {q.roundTripLossPct > 3 && '⚠️'}
+
+                      {/* Plain-Language Verdict */}
+                      <div className="text-left sm:text-left flex-1 min-w-0">
+                        {verdict.severity === 'block' ? (
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold tracking-wide uppercase bg-rose-100 text-rose-800 border border-rose-200 shrink-0">
+                              Blocked
                             </span>
-                          ) : 'N/A'}
+                            <span className="text-xs font-semibold text-rose-700">
+                              {verdict.text.replace(/^Blocked:\s*/i, '')}
+                            </span>
+                          </div>
+                        ) : (
+                          <span
+                            className={`text-xs font-medium leading-tight block ${
+                              verdict.severity === 'warn'
+                                ? 'text-amber-700'
+                                : verdict.severity === 'warn-soft'
+                                ? 'text-amber-600'
+                                : 'text-emerald-700'
+                            }`}
+                          >
+                            {verdict.text}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Actions: Details toggle & single-token buy */}
+                      <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                        <button
+                          onClick={() => toggleExpand(q.symbol)}
+                          className="text-xs font-medium text-slate-600 hover:text-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition shadow-2xs flex items-center gap-1 cursor-pointer"
+                        >
+                          <span>{isExpanded ? 'Less' : 'Details'}</span>
+                          <span className={`text-[10px] transition-transform ${isExpanded ? 'rotate-180' : ''}`}>▾</span>
+                        </button>
+
+                        <button
+                          onClick={() => handleInitiateBuy(q.symbol)}
+                          disabled={isBlocked || loading || buyStep === 'PREPARING'}
+                          className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1 shadow-2xs ${
+                            isBlocked
+                              ? 'bg-slate-100 text-slate-300 cursor-not-allowed border border-slate-200'
+                              : 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer'
+                          }`}
+                          title={isBlocked ? "Blocked by guard" : !isRealBuyLive ? "Simulate single token swap (demo)" : "Buy single token (max $2)"}
+                        >
+                          <span>⚡</span>
+                          <span>Buy</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Expanded Details Panel */}
+                    {isExpanded && (
+                      <div className="px-4 sm:px-6 pb-5 pt-1 bg-slate-50/70 border-t border-slate-100">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 py-3 text-xs">
+                          <div className="bg-white p-2.5 rounded-xl border border-slate-200/80 shadow-2xs">
+                            <span className="text-[11px] text-slate-400 uppercase font-medium block">Allocated</span>
+                            <span className="font-semibold text-slate-900 font-mono">${q.allocatedUsdc.toFixed(2)}</span>
+                          </div>
+                          <div className="bg-white p-2.5 rounded-xl border border-slate-200/80 shadow-2xs">
+                            <span className="text-[11px] text-slate-400 uppercase font-medium block">PreStocks Mark</span>
+                            <span className="font-semibold text-slate-900 font-mono">${q.markPrice.toFixed(2)}</span>
+                          </div>
+                          <div className="bg-white p-2.5 rounded-xl border border-slate-200/80 shadow-2xs">
+                            <span className="text-[11px] text-slate-400 uppercase font-medium block">Spread vs Mark</span>
+                            <span className={`font-semibold font-mono ${
+                              q.premiumVsMarkPct !== null && q.premiumVsMarkPct > maxPremium
+                                ? 'text-rose-600'
+                                : q.premiumVsMarkPct !== null && q.premiumVsMarkPct < 0
+                                ? 'text-emerald-600'
+                                : 'text-slate-900'
+                            }`}>
+                              {q.premiumVsMarkPct !== null ? `${q.premiumVsMarkPct >= 0 ? '+' : ''}${q.premiumVsMarkPct.toFixed(1)}%` : 'N/A'}
+                            </span>
+                          </div>
+                          <div className="bg-white p-2.5 rounded-xl border border-slate-200/80 shadow-2xs">
+                            <span className="text-[11px] text-slate-400 uppercase font-medium block">Exit Cost (Round-Trip)</span>
+                            <span className={`font-semibold font-mono ${
+                              q.roundTripLossPct !== null && q.roundTripLossPct > 3 ? 'text-amber-700' : 'text-slate-900'
+                            }`}>
+                              {q.roundTripLossPct !== null ? `${q.roundTripLossPct.toFixed(2)}%` : 'N/A'}
+                              {q.roundTripLossPct !== null && q.roundTripLossPct > 3 && ' ⚠️'}
+                            </span>
+                          </div>
+                          <div className="bg-white p-2.5 rounded-xl border border-slate-200/80 shadow-2xs">
+                            <span className="text-[11px] text-slate-400 uppercase font-medium block">Pool Impact (Jupiter)</span>
+                            <span className={`font-semibold font-mono ${
+                              q.poolImpactJupiter !== null && q.poolImpactJupiter > maxImpact ? 'text-amber-700' : 'text-slate-700'
+                            }`}>
+                              {q.poolImpactJupiter !== null ? `${q.poolImpactJupiter.toFixed(2)}%` : 'N/A'}
+                            </span>
+                          </div>
+                          <div className="bg-white p-2.5 rounded-xl border border-slate-200/80 shadow-2xs">
+                            <span className="text-[11px] text-slate-400 uppercase font-medium block">Empirical Impact ($X vs $1)</span>
+                            <span className={`font-semibold font-mono ${
+                              q.empiricalImpactPct !== null && q.empiricalImpactPct > maxImpact ? 'text-rose-600' : 'text-slate-700'
+                            }`}>
+                              {q.empiricalImpactPct !== null ? `${q.empiricalImpactPct.toFixed(2)}%` : 'N/A'}
+                            </span>
+                          </div>
+                          <div className="bg-white p-2.5 rounded-xl border border-slate-200/80 shadow-2xs">
+                            <span className="text-[11px] text-slate-400 uppercase font-medium block">Route & Venue</span>
+                            <span className="font-medium text-slate-800 text-[11px] truncate block">
+                              {q.hasRoute && q.routeType ? q.routeType : '—'}
+                            </span>
+                          </div>
+                          <div className="bg-white p-2.5 rounded-xl border border-slate-200/80 shadow-2xs">
+                            <span className="text-[11px] text-slate-400 uppercase font-medium block">Quote Freshness</span>
+                            <span className="font-semibold text-slate-700 font-mono">
+                              {q.hasRoute ? `${q.quoteAgeSeconds}s ago` : '—'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Original Precise Guard Diagnostic Text */}
+                        <div className="mt-1 p-3 rounded-xl bg-white border border-slate-200/80 text-xs">
+                          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-0.5">
+                            Original Guard Diagnostic
+                          </span>
+                          {isBlocked ? (
+                            <span className="text-rose-700 font-medium">{cleanReasons(q.blockedReasons)}</span>
+                          ) : isWarn ? (
+                            <span className="text-amber-800 font-medium">{cleanReasons(q.warnings)}</span>
+                          ) : (
+                            <span className="text-emerald-700 font-medium">All valuation limits (spread ≤ {maxPremium}%, impact ≤ {maxImpact}%, exit loss ≤ 3%) satisfied.</span>
+                          )}
                         </div>
                       </div>
-                    </div>
-
-                    {/* Detail Grid */}
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px] font-mono text-[#a1a1aa] pt-1">
-                      <div className="flex justify-between">
-                        <span>PreStocks Mark:</span>
-                        <span className="text-white">${q.markPrice.toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Spread vs Mark:</span>
-                        <span className={q.premiumVsMarkPct !== null && q.premiumVsMarkPct > maxPremium ? 'text-rose-400 font-semibold' : 'text-white'}>
-                          {q.premiumVsMarkPct !== null ? `${q.premiumVsMarkPct >= 0 ? '+' : ''}${q.premiumVsMarkPct.toFixed(1)}%` : 'N/A'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Pool Imp (Jup):</span>
-                        <span className={q.poolImpactJupiter !== null && q.poolImpactJupiter > maxImpact ? 'text-amber-400' : 'text-zinc-300'}>
-                          {q.poolImpactJupiter !== null ? `${q.poolImpactJupiter.toFixed(2)}%` : 'N/A'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Empirical Imp:</span>
-                        <span className={q.empiricalImpactPct !== null && q.empiricalImpactPct > maxImpact ? 'text-rose-400 font-semibold' : 'text-zinc-300'}>
-                          {q.empiricalImpactPct !== null ? `${q.empiricalImpactPct.toFixed(2)}%` : 'N/A'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between col-span-2 pt-1 border-t border-[#27272a]/60">
-                        <span>Route:</span>
-                        <span className="text-zinc-300 font-sans text-[10px]">
-                          {q.hasRoute && q.routeType ? q.routeType : '—'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Mobile Card Single-Token Buy Button (Item 7 & Item 10) */}
-                    <div className="pt-2 border-t border-[#27272a]/60 flex items-center justify-between">
-                      <span className="text-[10px] text-zinc-500 font-mono">Single Token Swap</span>
-                      <button
-                        onClick={() => handleInitiateBuy(q.symbol)}
-                        disabled={!isRealBuyLive || isBlocked || loading || buyStep === 'PREPARING'}
-                        className={`px-3 py-1.5 rounded text-xs font-mono font-bold transition flex items-center gap-1.5 ${
-                          !isRealBuyLive
-                            ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed border border-zinc-700/50'
-                            : isBlocked
-                            ? 'bg-zinc-800 text-zinc-600 cursor-not-allowed border border-zinc-800'
-                            : 'bg-[#14f195]/10 hover:bg-[#14f195]/20 text-[#14f195] border border-[#14f195]/40 hover:border-[#14f195]'
-                        }`}
-                        title={isBlocked ? "Blocked by guard" : !isRealBuyLive ? "Live buying is off in this demo" : "Buy single token (max $2)"}
-                      >
-                        <span>⚡</span>
-                        <span>Buy</span>
-                      </button>
-                    </div>
+                    )}
                   </div>
                 );
               })
             )}
           </div>
 
-          {!isRealBuyLive && (
-            <div className="px-4 py-2 bg-zinc-900/60 border-t border-[#27272a] text-[11px] font-mono text-zinc-400 flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-zinc-500"></span>
-              <span>Live buying is off in this demo</span>
-            </div>
-          )}
-        </div>
-
-        {/* Execution & Risk Section */}
-        <div className="bg-[#121215] border border-[#27272a] rounded-xl p-6 shadow-xl space-y-5">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="space-y-2">
-              <h3 className="text-sm font-semibold uppercase tracking-wider font-mono text-[#fafafa]">
-                3. Execution Summary
-              </h3>
-              <p className="text-xs text-[#a1a1aa]">
+          {/* Action Row (Folded Execution Summary) */}
+          <div className="p-5 sm:p-6 bg-slate-50/70 border-t border-slate-100 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+            <div>
+              <div className="text-sm font-semibold text-slate-900">
+                {hasBlockedTokens ? (
+                  <span className="text-rose-700 flex items-center gap-1.5">
+                    <span>⚠️</span>
+                    <span>{blockedCount} token(s) exceed protection thresholds</span>
+                  </span>
+                ) : (
+                  <span className="text-slate-900 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                    <span>All {quotes.length} tokens verified & ready</span>
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
                 {hasBlockedTokens
-                  ? `Execution halted: ${blockedCount} token(s) exceed your protection thresholds.`
-                  : `All ${quotes.length} selected tokens pass valuation and liquidity safety guards.`}
+                  ? 'Basket execution is blocked to protect your capital.'
+                  : `Simulated or executed together for $${amountUsdc.toFixed(2)} total USDC.`}
               </p>
 
-              {/* Action button to exclude blocked tokens and re-split */}
-              {hasBlockedTokens && (
-                <div className="pt-1">
-                  <button
-                    onClick={excludeBlockedTokens}
-                    className="text-xs font-mono font-medium px-3.5 py-1.5 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 transition flex items-center gap-1.5"
-                  >
-                    <span>🛡️</span>
-                    <span>Exclude blocked tokens and re-split ${amountUsdc} across the rest</span>
-                  </button>
-                </div>
+              {hasBlockedTokens && !isStaleDataBlock && (
+                <button
+                  onClick={excludeBlockedTokens}
+                  className="mt-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                >
+                  <span>🛡️</span>
+                  <span>Exclude blocked and re-split ${amountUsdc.toFixed(2)}</span>
+                </button>
               )}
             </div>
 
-            {/* Basket Buy Button (Build A: One-click dry-run & live execution) */}
-            <div className="w-full sm:w-auto">
+            <div className="flex flex-col items-stretch sm:items-end gap-1.5">
               <button
                 onClick={() => handleInitiateBasketBuy()}
                 disabled={loading || buyStep === 'PREPARING'}
-                className={`w-full sm:w-auto px-6 py-3.5 rounded-lg text-sm font-bold font-mono tracking-wide transition flex items-center justify-center gap-2 ${
+                className={`px-6 py-3 rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2 cursor-pointer shadow-xs ${
                   hasBlockedTokens
-                    ? 'bg-rose-950/40 text-rose-300 border border-rose-900/60 hover:bg-rose-950/60'
+                    ? 'bg-rose-100 text-rose-700 border border-rose-300 hover:bg-rose-200'
                     : isRealBuyLive
-                    ? 'bg-[#14f195] hover:bg-[#10c87b] text-black shadow-[0_0_20px_rgba(20,241,149,0.3)]'
-                    : 'bg-[#14f195]/10 hover:bg-[#14f195]/20 text-[#14f195] border border-[#14f195]/40 hover:border-[#14f195]'
+                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20'
+                    : 'bg-slate-900 hover:bg-slate-800 text-white'
                 }`}
                 title={
                   prestocksStatus?.isRateLimited
@@ -1524,39 +1475,39 @@ export default function Home() {
                 </span>
               </button>
               {!isRealBuyLive && !hasBlockedTokens && (
-                <div className="text-[10px] text-zinc-500 font-mono text-center pt-1">
+                <span className="text-[11px] text-slate-400 font-normal text-center sm:text-right">
                   Dry run: simulated on mainnet, nothing was sent
-                </div>
+                </span>
               )}
             </div>
           </div>
+        </div>
 
-          {/* Hard Risk Banner (Item 10) */}
-          <div className="p-4 rounded-lg bg-zinc-950 border border-zinc-800/80 text-xs text-zinc-400 space-y-1.5 leading-relaxed font-sans">
-            <div className="font-semibold text-zinc-300 flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider mb-1">
-              <span>⚠️</span> Essential Risk Disclosures & Limitations
-            </div>
-            <ul className="list-disc pl-4 space-y-1 text-[11px]">
-              <li className="text-zinc-300 font-medium">
-                Token transfer fees are set by the issuer and can change ({feeBannerText}).
-              </li>
-              <li>Not available to US persons or residents of restricted jurisdictions.</li>
-              <li>Tokens give economic price exposure only, not equity or shareholder rights in the underlying companies.</li>
-              <li>The underlying structure is disputed: OpenAI and Anthropic have stated that SPV share transfers are invalid.</li>
-              <li>Markets are thin; selling back may cost more than the quote suggests.</li>
-              <li>This application does not provide investment or financial advice.</li>
-            </ul>
+        {/* Essential Risk Disclosures & Limitations Banner */}
+        <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-500 space-y-1.5 leading-relaxed font-normal">
+          <div className="font-semibold text-slate-700 flex items-center gap-1.5 text-xs tracking-tight mb-1">
+            <span>⚠️</span> Essential Risk Disclosures & Limitations
           </div>
+          <ul className="list-disc pl-4 space-y-1 text-[11px]">
+            <li className="text-slate-600 font-medium">
+              Token transfer fees are set by the issuer and can change ({feeBannerText}).
+            </li>
+            <li>Not available to US persons or residents of restricted jurisdictions.</li>
+            <li>Tokens give economic price exposure only, not equity or shareholder rights in the underlying companies.</li>
+            <li>The underlying structure is disputed: OpenAI and Anthropic have stated that SPV share transfers are invalid.</li>
+            <li>Markets are thin; selling back may cost more than the quote suggests.</li>
+            <li>This application does not provide investment or financial advice.</li>
+          </ul>
         </div>
         {/* Modal Dialog: Single-Token Swap Preparation, Review & Confirmation */}
         {buyStep !== 'IDLE' && (
-          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-[#121215] border border-[#27272a] rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5 font-mono text-xs">
+          <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white border border-slate-200 rounded-2xl max-w-lg w-full p-6 shadow-xl space-y-5 text-slate-900 text-xs">
               {/* Header */}
-              <div className="flex items-center justify-between border-b border-[#27272a] pb-3">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3.5">
                 <div className="flex items-center gap-2">
-                  <span className="h-2.5 w-2.5 rounded-full bg-[#14f195]"></span>
-                  <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
+                  <h3 className="text-sm font-bold text-slate-900 tracking-tight">
                     {buyStep === 'SUCCESS'
                       ? (isBasketMode ? 'Basket Swaps Confirmed' : 'Swap Confirmed')
                       : buyStep === 'ERROR'
@@ -1574,7 +1525,7 @@ export default function Home() {
                     setPreparedBasket(null);
                     setPreparedSwap(null);
                   }}
-                  className="text-zinc-400 hover:text-white text-base leading-none px-2 py-1 rounded"
+                  className="text-slate-400 hover:text-slate-700 text-base leading-none p-1 rounded-md hover:bg-slate-100 transition cursor-pointer"
                 >
                   ✕
                 </button>
@@ -1583,11 +1534,11 @@ export default function Home() {
               {/* Step: PREPARING */}
               {buyStep === 'PREPARING' && (
                 <div className="py-8 text-center space-y-3">
-                  <div className="inline-block h-8 w-8 border-2 border-[#14f195] border-t-transparent rounded-full animate-spin"></div>
-                  <div className="text-zinc-300 font-medium">
+                  <div className="inline-block h-8 w-8 border-2 border-slate-200 border-t-emerald-600 rounded-full animate-spin"></div>
+                  <div className="text-slate-900 font-semibold text-sm">
                     Re-fetching fresh quotes and simulating swap on Helius RPC...
                   </div>
-                  <div className="text-[11px] text-zinc-500">
+                  <div className="text-xs text-slate-500">
                     Verifying safety guards, pool depth, and Token-2022 transfer fee
                   </div>
                 </div>
@@ -1597,28 +1548,28 @@ export default function Home() {
               {buyStep === 'CONFIRMING' && (preparedSwap || preparedBasket) && (
                 <div className="space-y-4">
                   {(preparedSwap?.isDemo || preparedBasket?.isDemo) && (
-                    <div className="p-3 rounded-lg bg-amber-950/40 border border-amber-800/60 text-amber-300 text-[11px] font-sans">
-                      <span className="font-bold">ℹ️ Demo Preview Mode:</span> Live buying is currently disabled in this build (<code className="font-mono text-amber-200">ENABLE_REAL_BUY=false</code>). In live mode, this simulates on-chain and prompts Phantom for manual signature.
+                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 text-xs">
+                      <span className="font-semibold text-slate-900">Demo Preview Mode:</span> Live buying is currently disabled in this build (<code className="font-mono text-slate-800 bg-slate-200/70 px-1 py-0.5 rounded text-[11px]">ENABLE_REAL_BUY=false</code>). In live mode, this simulates on-chain and prompts Phantom for manual signature.
                     </div>
                   )}
 
-                  {/* 45s Blockhash Expiration Countdown Banner (Item 3) */}
-                  <div className={`p-2.5 rounded-lg border flex items-center justify-between text-xs font-mono transition ${
+                  {/* 45s Blockhash Expiration Countdown Banner */}
+                  <div className={`p-2.5 rounded-xl border flex items-center justify-between text-xs transition ${
                     secondsUntilExpiry <= 10
-                      ? 'bg-rose-950/40 border-rose-800 text-rose-300 animate-pulse'
-                      : 'bg-[#18181b] border-[#27272a] text-zinc-300'
+                      ? 'bg-rose-50 border-rose-200 text-rose-800 animate-pulse'
+                      : 'bg-slate-50 border-slate-200 text-slate-700'
                   }`}>
                     <div className="flex items-center gap-2">
-                      <span className={`h-2 w-2 rounded-full ${secondsUntilExpiry <= 10 ? 'bg-rose-500' : 'bg-[#14f195]'}`}></span>
-                      <span>Transaction Blockhash Validity:</span>
+                      <span className={`h-2 w-2 rounded-full ${secondsUntilExpiry <= 10 ? 'bg-rose-500' : 'bg-emerald-500'}`}></span>
+                      <span className="font-medium">Transaction Blockhash Validity:</span>
                     </div>
-                    <div className="font-bold">
+                    <div className="font-bold font-mono">
                       {secondsUntilExpiry > 0 ? (
-                        <span className={secondsUntilExpiry <= 10 ? 'text-rose-400' : 'text-[#14f195]'}>
+                        <span className={secondsUntilExpiry <= 10 ? 'text-rose-600' : 'text-emerald-700'}>
                           Expires in {secondsUntilExpiry}s
                         </span>
                       ) : (
-                        <span className="text-rose-400">EXPIRED (Re-preparing...)</span>
+                        <span className="text-rose-600">EXPIRED (Re-preparing...)</span>
                       )}
                     </div>
                   </div>
@@ -1628,28 +1579,28 @@ export default function Home() {
                     <div className="space-y-3">
                       {preparedBasket.isDemo ? (
                         /* Dry-run simulation header */
-                        <div className="p-3 rounded-lg bg-[#18181b] border border-emerald-500/40 space-y-1.5">
+                        <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
                               ✓ {preparedBasket.label || "Dry run: simulated on mainnet, nothing was sent"}
                             </span>
-                            <span className="text-zinc-300 font-mono text-xs">Total: ${preparedBasket.totalUsdc?.toFixed(2)} USDC</span>
+                            <span className="text-slate-900 font-mono font-semibold text-xs">Total: ${preparedBasket.totalUsdc?.toFixed(2)} USDC</span>
                           </div>
-                          <div className="text-[11px] text-zinc-400 font-mono flex flex-col sm:flex-row sm:items-center justify-between gap-1 pt-1 border-t border-[#27272a]/60">
+                          <div className="text-[11px] text-slate-500 flex flex-col sm:flex-row sm:items-center justify-between gap-1 pt-1.5 border-t border-slate-200/80">
                             <span>Demo wallet (read-only simulation)</span>
-                            <span className="text-zinc-500 text-[10px]">Read from DEMO_SIM_ADDRESS</span>
+                            <span className="text-slate-400 text-[10px]">Read from DEMO_SIM_ADDRESS</span>
                           </div>
                         </div>
                       ) : (
-                        <div className="p-3 rounded-lg bg-[#18181b] border border-[#27272a] flex items-center justify-between">
+                        <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
                           <div>
-                            <span className="text-[10px] text-zinc-400 uppercase block">Multi-Token Basket</span>
-                            <span className="text-white font-bold text-sm">
+                            <span className="text-[10px] text-slate-400 uppercase font-medium block">Multi-Token Basket</span>
+                            <span className="text-slate-900 font-bold text-sm">
                               {preparedBasket.legs?.length} Approved PreStocks Legs
                             </span>
                           </div>
                           <div>
-                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
                               Server Guard Verified
                             </span>
                           </div>
@@ -1658,28 +1609,29 @@ export default function Home() {
 
                       {/* Warnings */}
                       {preparedBasket.warnings && preparedBasket.warnings.length > 0 && (
-                        <div className="p-3 rounded-lg bg-amber-950/30 border border-amber-800/60 text-amber-300 text-[11px] font-sans space-y-1">
-                          <div className="font-bold uppercase tracking-wider font-mono text-[10px] text-amber-400">
-                            ⚠️ Basket Guard Warning Notice
+                        <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200/80 text-amber-900 text-xs space-y-1">
+                          <div className="font-semibold text-xs text-amber-900 flex items-center gap-1.5">
+                            <span>⚠️</span>
+                            <span>Basket Guard Notice</span>
                           </div>
-                          <div>{cleanReasons(preparedBasket.warnings)}</div>
+                          <div className="text-[11px] text-amber-800 leading-relaxed pt-0.5">{cleanReasons(preparedBasket.warnings)}</div>
                         </div>
                       )}
 
-                      {/* Partial Failure UI (Item 1b) */}
+                      {/* Partial Failure UI */}
                       {preparedBasket.hasFailures && (
-                        <div className="p-3 rounded-lg bg-rose-950/30 border border-rose-800/60 text-rose-300 text-[11px] font-sans space-y-2">
-                          <div className="font-bold uppercase tracking-wider font-mono text-[10px] text-rose-400 flex items-center gap-1.5">
+                        <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 text-xs space-y-2">
+                          <div className="font-semibold text-xs text-rose-900 flex items-center gap-1.5">
                             <span>⚠️</span>
                             <span>Partial Simulation Failure</span>
                           </div>
-                          <p className="text-xs text-rose-200">
+                          <p className="text-xs text-rose-800">
                             One or more legs failed simulation or safety checks. You can re-quote only the failed legs through the full safety guard (no auto-retries).
                           </p>
                           <div className="pt-1">
                             <button
                               onClick={handleReQuoteFailedLegs}
-                              className="px-3 py-1.5 rounded bg-rose-500 hover:bg-rose-400 text-black font-mono font-bold text-xs transition flex items-center gap-1.5 shadow"
+                              className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
                             >
                               <span>🛡️</span>
                               <span>Re-quote failed legs</span>
@@ -1688,49 +1640,55 @@ export default function Home() {
                         </div>
                       )}
 
-                      {/* Basket Legs List with dry-run simulation metrics (Item 1a) */}
+                      {/* Basket Legs List */}
                       <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
                         {preparedBasket.legs?.map((leg: any) => (
-                          <div key={leg.symbol} className="p-2.5 rounded bg-[#0c0c0e] border border-[#27272a] text-[11px] space-y-1.5">
+                          <div key={leg.symbol} className="p-3 rounded-xl bg-white border border-slate-200 text-xs space-y-1.5 shadow-2xs">
                             <div className="flex justify-between items-center">
                               <div className="flex items-center gap-2">
-                                <span className="font-bold text-white">{leg.symbol}</span>
-                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase font-mono ${
+                                <span className="font-semibold text-slate-900">{leg.symbol}</span>
+                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
                                   leg.status === 'FAIL'
-                                    ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30'
+                                    ? 'bg-rose-50 text-rose-700 border border-rose-200'
                                     : leg.status === 'WARN' || leg.guardStatus === 'WARN'
-                                    ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
-                                    : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                                    ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                    : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                                 }`}>
                                   {leg.status === 'FAIL' ? '✗ FAIL' : (leg.status === 'WARN' || leg.guardStatus === 'WARN') ? '⚠️ WARN' : '✓ PASS'}
                                 </span>
                               </div>
-                              <span className="text-emerald-400 font-mono">${(leg.allocationUsdc ?? 0).toFixed(2)} USDC</span>
+                              <span className="text-slate-900 font-mono font-semibold">${(leg.allocationUsdc ?? 0).toFixed(2)} USDC</span>
                             </div>
 
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 text-[10px] text-zinc-400 font-mono pt-1 border-t border-[#27272a]/60">
-                              <div>Tokens: <span className="text-zinc-200 font-bold">{leg.status === 'FAIL' || leg.simulatedTokensOut === 'n/a' || !leg.simulatedTokensOut ? 'n/a' : `~${typeof leg.simulatedTokensOut === 'number' ? leg.simulatedTokensOut.toFixed(6) : leg.simulatedTokensOut}`}</span></div>
-                              <div>Compute: <span className="text-zinc-200">{leg.computeUnits ? `${leg.computeUnits.toLocaleString()} CU` : '—'}</span></div>
-                              <div>Tx Size: <span className="text-zinc-200">{leg.txSizeBytes ? `${leg.txSizeBytes} B` : '—'}</span></div>
-                              <div>Venue: <span className="text-zinc-200">{leg.routeType || leg.venue || '—'}</span></div>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 text-[10px] text-slate-500 font-mono pt-1 border-t border-slate-100">
+                              <div>Tokens: <span className="text-slate-800 font-semibold">{leg.status === 'FAIL' || leg.simulatedTokensOut === 'n/a' || !leg.simulatedTokensOut ? 'n/a' : `~${typeof leg.simulatedTokensOut === 'number' ? leg.simulatedTokensOut.toFixed(6) : leg.simulatedTokensOut}`}</span></div>
+                              <div>Compute: <span className="text-slate-800">{leg.computeUnits ? `${leg.computeUnits.toLocaleString()} CU` : '—'}</span></div>
+                              <div>Tx Size: <span className="text-slate-800">{leg.txSizeBytes ? `${leg.txSizeBytes} B` : '—'}</span></div>
+                              <div>Venue: <span className="text-slate-800">{leg.routeType || leg.venue || '—'}</span></div>
                             </div>
 
-                            <div className="flex justify-between items-center text-zinc-400 text-[10px] font-mono">
+                            <div className="flex justify-between items-center text-slate-500 text-[10px] font-mono">
                               <span>Exec: ${leg.executablePrice?.toFixed(2) || leg.summary?.executablePrice?.toFixed(2) || '—'}</span>
                               <span>Mark: ${leg.markPrice?.toFixed(2) || leg.summary?.markPrice?.toFixed(2) || '—'} ({leg.markAgeSeconds ?? 0}s old)</span>
-                              <span className={(leg.premiumPct ?? leg.summary?.premiumVsMarkPct ?? 0) > 5 ? 'text-rose-400' : 'text-emerald-400'}>
+                              <span className={(leg.premiumPct ?? leg.summary?.premiumVsMarkPct ?? 0) > 5 ? 'text-rose-600 font-semibold' : 'text-emerald-600 font-semibold'}>
                                 {(leg.premiumPct ?? leg.summary?.premiumVsMarkPct ?? 0) >= 0 ? '+' : ''}{(leg.premiumPct ?? leg.summary?.premiumVsMarkPct ?? 0).toFixed(1)}%
                               </span>
                             </div>
 
                             {leg.warnings && leg.warnings.length > 0 && (
-                              <div className="text-[10px] text-amber-400 font-mono bg-amber-950/30 p-1.5 rounded border border-amber-900/50 break-all">
-                                ⚠️ Guard warning: {cleanReasons(leg.warnings)}
+                              <div className="text-[11px] text-amber-800 bg-amber-50 p-2 rounded-lg border border-amber-200/80">
+                                <span className="font-semibold">⚠️ Guard notice: </span>
+                                {leg.warnings.some((w: string) => w.toLowerCase().includes('exit cost'))
+                                  ? 'Selling back right now would cost more than usual'
+                                  : leg.warnings.some((w: string) => w.toLowerCase().includes('pool impact'))
+                                  ? 'Minor caution, likely not a real issue'
+                                  : cleanReasons(leg.warnings)}
+                                <div className="text-[10px] text-amber-700/80 mt-0.5">{cleanReasons(leg.warnings)}</div>
                               </div>
                             )}
 
                             {leg.err && (
-                              <div className="text-[10px] text-rose-400 font-mono bg-rose-950/30 p-1.5 rounded border border-rose-900/50 break-all">
+                              <div className="text-[10px] text-rose-700 bg-rose-50 p-2 rounded-lg border border-rose-200">
                                 Error: {leg.err}
                               </div>
                             )}
@@ -1746,14 +1704,14 @@ export default function Home() {
                               setBuyStep('IDLE');
                               setIsBasketMode(false);
                             }}
-                            className="w-full py-2.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white font-bold transition"
+                            className="w-full py-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-semibold transition cursor-pointer text-xs shadow-2xs"
                           >
                             Close Dry Run
                           </button>
                         ) : secondsUntilExpiry <= 0 ? (
                           <button
                             onClick={() => handleInitiateBasketBuy(userConfirmedWarn)}
-                            className="w-full py-2.5 rounded-lg bg-rose-500 hover:bg-rose-400 text-black font-bold transition"
+                            className="w-full py-2.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-semibold transition cursor-pointer text-xs"
                           >
                             Blockhash Expired — Re-quote Basket
                           </button>
@@ -1761,11 +1719,11 @@ export default function Home() {
                           <button
                             disabled={isReverifying}
                             onClick={() => handleInitiateBasketBuy(true)}
-                            className="w-full py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-bold transition flex items-center justify-center gap-2 disabled:opacity-75 disabled:cursor-not-allowed"
+                            className="w-full py-2.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold transition flex items-center justify-center gap-2 disabled:opacity-75 disabled:cursor-not-allowed cursor-pointer text-xs shadow-2xs"
                           >
                             {isReverifying ? (
                               <>
-                                <span className="inline-block h-4 w-4 border-2 border-black border-t-transparent rounded-full animate-spin"></span>
+                                <span className="inline-block h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
                                 <span>Re-verifying Basket...</span>
                               </>
                             ) : (
@@ -1775,7 +1733,7 @@ export default function Home() {
                         ) : (
                           <button
                             onClick={handleConfirmAndSignBasket}
-                            className="w-full py-2.5 rounded-lg bg-[#14f195] hover:bg-[#10c87b] text-black font-bold transition flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(20,241,149,0.2)]"
+                            className="w-full py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition flex items-center justify-center gap-2 cursor-pointer text-xs shadow-2xs"
                           >
                             <span>⚡</span>
                             <span>Proceed to Sign Basket in Phantom</span>
@@ -1786,7 +1744,7 @@ export default function Home() {
                             setBuyStep('IDLE');
                             setIsBasketMode(false);
                           }}
-                          className="w-full sm:w-auto px-4 py-2.5 rounded-lg bg-[#18181b] hover:bg-[#27272a] text-zinc-300 border border-[#27272a] transition"
+                          className="w-full sm:w-auto px-4 py-2.5 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 transition cursor-pointer text-xs font-medium"
                         >
                           Cancel
                         </button>
@@ -1795,11 +1753,11 @@ export default function Home() {
                   ) : preparedSwap ? (
                     /* Single Token Breakdown */
                     <div className="space-y-4">
-                      {/* Item 12: Venue Name and Verified/Unverified Status */}
-                      <div className="p-3 rounded-lg bg-[#18181b] border border-[#27272a] flex items-center justify-between">
+                      {/* Venue Name and Status */}
+                      <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
                         <div>
-                          <span className="text-[10px] text-zinc-400 uppercase block">Trading Venue</span>
-                          <span className="text-white font-bold text-sm">
+                          <span className="text-[10px] text-slate-400 uppercase font-medium block">Trading Venue</span>
+                          <span className="text-slate-900 font-bold text-sm">
                             {preparedSwap.summary?.routeType || 'Meteora DLMM'}
                           </span>
                         </div>
@@ -1807,8 +1765,8 @@ export default function Home() {
                           <span
                             className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${
                               preparedSwap.summary?.venueStatus === 'VERIFIED'
-                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                                : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : 'bg-rose-50 text-rose-700 border-rose-200'
                             }`}
                           >
                             {preparedSwap.summary?.venueStatus === 'VERIFIED' ? '✓ Verified Venue' : '⚠️ Unverified Venue'}
@@ -1818,48 +1776,55 @@ export default function Home() {
 
                       {/* Guard Warnings if any */}
                       {preparedSwap.warnings && preparedSwap.warnings.length > 0 && (
-                        <div className="p-3 rounded-lg bg-amber-950/30 border border-amber-800/60 text-amber-300 text-[11px] font-sans space-y-1">
-                          <div className="font-bold uppercase tracking-wider font-mono text-[10px] text-amber-400">
-                            ⚠️ Guard Warning Notice
+                        <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200/80 text-amber-900 text-xs space-y-1">
+                          <div className="font-semibold text-xs text-amber-900 flex items-center gap-1.5">
+                            <span>⚠️</span>
+                            <span>
+                              {cleanReasons(preparedSwap.warnings).toLowerCase().includes('exit cost')
+                                ? 'Selling back right now would cost more than usual'
+                                : cleanReasons(preparedSwap.warnings).toLowerCase().includes('pool impact')
+                                ? 'Minor caution, likely not a real issue'
+                                : 'Guard Warning Notice'}
+                            </span>
                           </div>
-                          <div>{cleanReasons(preparedSwap.warnings)}</div>
+                          <div className="text-[11px] text-amber-800 leading-relaxed pt-0.5">{cleanReasons(preparedSwap.warnings)}</div>
                         </div>
                       )}
 
                       {/* Swap Breakdown Table */}
-                      <div className="space-y-2 bg-[#0c0c0e] p-3.5 rounded-lg border border-[#27272a] text-[11px]">
-                        <div className="flex justify-between text-zinc-400">
+                      <div className="space-y-2.5 bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs">
+                        <div className="flex justify-between text-slate-600">
                           <span>USDC Spend (Hard Capped):</span>
-                          <span className="text-white font-bold">${(preparedSwap.summary?.spendUsdc ?? 0).toFixed(2)}</span>
+                          <span className="text-slate-900 font-bold font-mono">${(preparedSwap.summary?.spendUsdc ?? 0).toFixed(2)}</span>
                         </div>
-                        <div className="flex justify-between text-zinc-400">
+                        <div className="flex justify-between text-slate-600">
                           <span>Executable Price:</span>
-                          <span className="text-white font-semibold">${(preparedSwap.summary?.executablePrice ?? 0).toFixed(2)}</span>
+                          <span className="text-slate-900 font-semibold font-mono">${(preparedSwap.summary?.executablePrice ?? 0).toFixed(2)}</span>
                         </div>
-                        <div className="flex justify-between text-zinc-400">
+                        <div className="flex justify-between text-slate-600">
                           <span>PreStocks Mark Price:</span>
-                          <span className="text-zinc-300">${(preparedSwap.summary?.markPrice ?? 0).toFixed(2)}</span>
+                          <span className="text-slate-700 font-mono">${(preparedSwap.summary?.markPrice ?? 0).toFixed(2)}</span>
                         </div>
-                        <div className="flex justify-between text-zinc-400">
+                        <div className="flex justify-between text-slate-600">
                           <span>Valuation Markup:</span>
-                          <span className={(preparedSwap.summary?.premiumVsMarkPct ?? 0) > 5 ? 'text-rose-400 font-bold' : 'text-emerald-400'}>
+                          <span className={(preparedSwap.summary?.premiumVsMarkPct ?? 0) > 5 ? 'text-rose-600 font-bold font-mono' : 'text-emerald-700 font-semibold font-mono'}>
                             {(preparedSwap.summary?.premiumVsMarkPct ?? 0) >= 0 ? '+' : ''}{(preparedSwap.summary?.premiumVsMarkPct ?? 0).toFixed(1)}%
                           </span>
                         </div>
-                        <div className="pt-2 border-t border-[#27272a] flex justify-between text-zinc-300">
+                        <div className="pt-2 border-t border-slate-200/80 flex justify-between text-slate-800 font-medium">
                           <span>Expected Net Tokens:</span>
-                          <span className="text-emerald-400 font-bold font-mono">
+                          <span className="text-emerald-700 font-bold font-mono">
                             {(preparedSwap.summary?.expectedNetTokens ?? 0).toFixed(6)} {preparedSwap.summary?.symbol || ''}
                           </span>
                         </div>
-                        <div className="flex justify-between text-zinc-400 text-[10px]">
+                        <div className="flex justify-between text-slate-500 text-[11px]">
                           <span>Guaranteed Minimum (Slippage + Fee):</span>
-                          <span className="text-zinc-300 font-mono">
+                          <span className="text-slate-700 font-mono">
                             {(preparedSwap.summary?.minReceivedTokens ?? 0).toFixed(6)}
                           </span>
                         </div>
                         {preparedSwap.summary?.feeNote && (
-                          <div className="text-[10px] text-teal-400 font-sans pt-1 border-t border-[#27272a]/50">
+                          <div className="text-[11px] text-slate-500 pt-1.5 border-t border-slate-200/60">
                             {preparedSwap.summary.feeNote}
                           </div>
                         )}
@@ -1867,32 +1832,32 @@ export default function Home() {
 
                       {/* Actions */}
                       <div className="pt-2 flex flex-col sm:flex-row items-center gap-2.5">
-                        {preparedSwap.isDemo ? (
-                          <button
-                            onClick={() => setBuyStep('IDLE')}
-                            className="w-full py-2.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white font-bold transition"
-                          >
-                            Close Demo Preview
-                          </button>
-                        ) : preparedSwap.requiresExplicitConfirm ? (
+                        {preparedSwap.requiresExplicitConfirm ? (
                           <button
                             disabled={isReverifying}
                             onClick={() => handleInitiateBuy(activeBuyToken!, true)}
-                            className="w-full py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-bold transition flex items-center justify-center gap-2 disabled:opacity-75 disabled:cursor-not-allowed"
+                            className="w-full py-2.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold transition flex items-center justify-center gap-2 disabled:opacity-75 disabled:cursor-not-allowed cursor-pointer text-xs shadow-2xs"
                           >
                             {isReverifying ? (
                               <>
-                                <span className="inline-block h-4 w-4 border-2 border-black border-t-transparent rounded-full animate-spin"></span>
+                                <span className="inline-block h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
                                 <span>Re-verifying with Safety Guards...</span>
                               </>
                             ) : (
                               <span>Confirm Warning & Re-verify</span>
                             )}
                           </button>
+                        ) : preparedSwap.isDemo ? (
+                          <button
+                            onClick={() => setBuyStep('IDLE')}
+                            className="w-full py-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-semibold transition cursor-pointer text-xs shadow-2xs"
+                          >
+                            Close Demo Preview
+                          </button>
                         ) : (
                           <button
                             onClick={handleConfirmAndSign}
-                            className="w-full py-2.5 rounded-lg bg-[#14f195] hover:bg-[#10c87b] text-black font-bold transition flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(20,241,149,0.2)]"
+                            className="w-full py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition flex items-center justify-center gap-2 cursor-pointer text-xs shadow-2xs"
                           >
                             <span>⚡</span>
                             <span>Proceed to Sign in Phantom</span>
@@ -1900,7 +1865,7 @@ export default function Home() {
                         )}
                         <button
                           onClick={() => setBuyStep('IDLE')}
-                          className="w-full sm:w-auto px-4 py-2.5 rounded-lg bg-[#18181b] hover:bg-[#27272a] text-zinc-300 border border-[#27272a] transition"
+                          className="w-full sm:w-auto px-4 py-2.5 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 transition cursor-pointer text-xs font-medium"
                         >
                           Cancel
                         </button>
@@ -1913,11 +1878,11 @@ export default function Home() {
               {/* Step: SIGNING */}
               {buyStep === 'SIGNING' && (
                 <div className="py-8 text-center space-y-3">
-                  <div className="inline-block h-8 w-8 border-2 border-[#9945ff] border-t-transparent rounded-full animate-spin"></div>
-                  <div className="text-zinc-200 font-medium">
+                  <div className="inline-block h-8 w-8 border-2 border-slate-200 border-t-indigo-600 rounded-full animate-spin"></div>
+                  <div className="text-slate-900 font-semibold text-sm">
                     Waiting for manual approval in Phantom wallet...
                   </div>
-                  <div className="text-[11px] text-zinc-400">
+                  <div className="text-xs text-slate-500">
                     Check your Phantom extension window to review and sign.
                   </div>
                 </div>
@@ -1926,11 +1891,11 @@ export default function Home() {
               {/* Step: CONFIRMING_TX */}
               {buyStep === 'CONFIRMING_TX' && (
                 <div className="py-8 text-center space-y-3">
-                  <div className="inline-block h-8 w-8 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin"></div>
-                  <div className="text-zinc-200 font-medium">
+                  <div className="inline-block h-8 w-8 border-2 border-slate-200 border-t-emerald-600 rounded-full animate-spin"></div>
+                  <div className="text-slate-900 font-semibold text-sm">
                     Transaction broadcast to Solana network...
                   </div>
-                  <div className="text-[11px] text-zinc-400">
+                  <div className="text-xs text-slate-500">
                     Polling confirmation statuses via secure RPC proxy
                   </div>
                 </div>
@@ -1939,28 +1904,28 @@ export default function Home() {
               {/* Step: SUCCESS (Receipt) */}
               {buyStep === 'SUCCESS' && (swapReceipt || basketReceipts.length > 0) && (
                 <div className="space-y-4">
-                  <div className="p-3 rounded-lg bg-emerald-950/30 border border-emerald-800/60 text-emerald-300 text-xs font-sans">
+                  <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-medium">
                     ✓ {isBasketMode ? `${basketReceipts.length} basket legs successfully confirmed on Solana mainnet!` : 'Swap transaction successfully confirmed on Solana mainnet!'}
                   </div>
 
                   {isBasketMode && basketReceipts.length > 0 ? (
                     <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                       {basketReceipts.map((rcpt) => (
-                        <div key={rcpt.signature} className="p-3 rounded bg-[#0c0c0e] border border-[#27272a] text-[11px] space-y-1">
+                        <div key={rcpt.signature} className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-1">
                           <div className="flex justify-between items-center">
-                            <span className="font-bold text-white">{rcpt.symbol}</span>
-                            <span className="text-emerald-400 font-mono">${rcpt.amountUsdc.toFixed(2)} USDC</span>
+                            <span className="font-semibold text-slate-900">{rcpt.symbol}</span>
+                            <span className="text-slate-900 font-mono font-semibold">${rcpt.amountUsdc.toFixed(2)} USDC</span>
                           </div>
-                          <div className="flex justify-between text-zinc-400 text-[10px]">
+                          <div className="flex justify-between text-slate-500 text-[11px]">
                             <span>Delivered:</span>
-                            <span className="text-zinc-200 font-mono font-bold">~{rcpt.expectedNetTokens.toFixed(6)} tokens</span>
+                            <span className="text-slate-800 font-mono font-semibold">~{rcpt.expectedNetTokens.toFixed(6)} tokens</span>
                           </div>
-                          <div className="pt-1 border-t border-[#27272a]/40">
+                          <div className="pt-1 border-t border-slate-200/60">
                             <a
                               href={rcpt.solscanUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-[#14f195] hover:underline font-mono text-[10px] break-all block"
+                              className="text-emerald-700 hover:underline font-mono text-[11px] break-all block"
                             >
                               Tx: {rcpt.signature.slice(0, 16)}...{rcpt.signature.slice(-8)} ↗
                             </a>
@@ -1969,51 +1934,51 @@ export default function Home() {
                       ))}
                     </div>
                   ) : swapReceipt ? (
-                    <div className="space-y-2 bg-[#0c0c0e] p-3.5 rounded-lg border border-[#27272a] text-[11px]">
-                      <div className="flex justify-between text-zinc-400">
+                    <div className="space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs">
+                      <div className="flex justify-between text-slate-600">
                         <span>Token Swapped:</span>
-                        <span className="text-white font-bold">{swapReceipt.symbol}</span>
+                        <span className="text-slate-900 font-semibold">{swapReceipt.symbol}</span>
                       </div>
-                      <div className="flex justify-between text-zinc-400">
+                      <div className="flex justify-between text-slate-600">
                         <span>USDC Spent:</span>
-                        <span className="text-white font-mono">${swapReceipt.amountUsdc.toFixed(2)}</span>
+                        <span className="text-slate-900 font-mono font-semibold">${swapReceipt.amountUsdc.toFixed(2)}</span>
                       </div>
-                      <div className="flex justify-between text-zinc-400">
+                      <div className="flex justify-between text-slate-600">
                         <span>Quoted Expected Tokens:</span>
-                        <span className="text-zinc-300 font-mono">{swapReceipt.expectedNetTokens.toFixed(6)}</span>
+                        <span className="text-slate-800 font-mono">{swapReceipt.expectedNetTokens.toFixed(6)}</span>
                       </div>
-                      <div className="flex justify-between text-zinc-400">
+                      <div className="flex justify-between text-slate-600">
                         <span>Actual Tokens Received:</span>
-                        <span className="text-emerald-400 font-bold font-mono">
+                        <span className="text-emerald-700 font-bold font-mono">
                           {swapReceipt.actualTokensReceived !== null ? swapReceipt.actualTokensReceived.toFixed(6) : '—'}
                         </span>
                       </div>
-                      <div className="flex justify-between text-zinc-400">
+                      <div className="flex justify-between text-slate-600">
                         <span>Diff (Actual vs Quoted):</span>
-                        <span className={`font-mono font-bold ${
-                          (swapReceipt.diffTokens ?? 0) >= 0 ? 'text-emerald-400' : 'text-amber-400'
+                        <span className={`font-mono font-semibold ${
+                          (swapReceipt.diffTokens ?? 0) >= 0 ? 'text-emerald-700' : 'text-amber-700'
                         }`}>
                           {swapReceipt.diffTokens !== null && swapReceipt.diffTokens !== undefined
                             ? `${swapReceipt.diffTokens >= 0 ? '+' : ''}${swapReceipt.diffTokens.toFixed(6)}`
                             : '—'}
                         </span>
                       </div>
-                      <div className="flex justify-between text-zinc-400 text-[10px]">
+                      <div className="flex justify-between text-slate-600 text-[11px]">
                         <span>Quoted Minimum:</span>
-                        <span className="text-zinc-300 font-mono">{swapReceipt.minTokens.toFixed(6)}</span>
+                        <span className="text-slate-700 font-mono">{swapReceipt.minTokens.toFixed(6)}</span>
                       </div>
-                      <div className="pt-2 border-t border-[#27272a] flex flex-col gap-1">
-                        <span className="text-zinc-400 text-[10px]">Solscan Explorer Link:</span>
+                      <div className="pt-2 border-t border-slate-200/80 flex flex-col gap-1">
+                        <span className="text-slate-500 text-[11px]">Solscan Explorer Link:</span>
                         <a
                           href={swapReceipt.solscanUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-[#14f195] hover:underline font-mono text-[10px] break-all"
+                          className="text-emerald-700 hover:underline font-mono text-[11px] break-all"
                         >
                           {swapReceipt.signature} ↗
                         </a>
                       </div>
-                      <div className="text-[10px] text-zinc-400 font-sans pt-1 border-t border-[#27272a]/50">
+                      <div className="text-[11px] text-slate-500 pt-1 border-t border-slate-200/60">
                         Delivered net of Token-2022 transfer fee (1.00%) and AMM execution slippage.
                       </div>
                     </div>
@@ -2026,7 +1991,7 @@ export default function Home() {
                       setBasketReceipts([]);
                       setIsBasketMode(false);
                     }}
-                    className="w-full py-2.5 rounded-lg bg-[#14f195] hover:bg-[#10c87b] text-black font-bold transition"
+                    className="w-full py-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-semibold transition cursor-pointer text-xs shadow-2xs"
                   >
                     Done
                   </button>
@@ -2036,24 +2001,24 @@ export default function Home() {
               {/* Step: TIMEOUT (Status Unknown) */}
               {buyStep === 'TIMEOUT' && (swapReceipt || basketReceipts.length > 0) && (
                 <div className="space-y-4">
-                  <div className="p-3 rounded-lg bg-amber-950/30 border border-amber-800/60 text-amber-300 text-xs font-sans">
-                    <span className="font-bold">Status Unknown:</span> Confirmation timed out after 30 seconds. Neither success nor failure is claimed.
+                  <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs">
+                    <span className="font-semibold">Status Unknown:</span> Confirmation timed out after 30 seconds. Neither success nor failure is claimed.
                   </div>
 
                   {isBasketMode && basketReceipts.length > 0 ? (
                     <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                       {basketReceipts.map((rcpt) => (
-                        <div key={rcpt.signature} className="p-3 rounded bg-[#0c0c0e] border border-[#27272a] text-[11px] space-y-1">
+                        <div key={rcpt.signature} className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-1">
                           <div className="flex justify-between items-center">
-                            <span className="font-bold text-white">{rcpt.symbol}</span>
-                            <span className="text-white font-mono">${rcpt.amountUsdc.toFixed(2)} USDC</span>
+                            <span className="font-semibold text-slate-900">{rcpt.symbol}</span>
+                            <span className="text-slate-900 font-mono font-semibold">${rcpt.amountUsdc.toFixed(2)} USDC</span>
                           </div>
-                          <div className="pt-1 border-t border-[#27272a]/40">
+                          <div className="pt-1 border-t border-slate-200/60">
                             <a
                               href={rcpt.solscanUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-[#14f195] hover:underline font-mono text-[10px] break-all block"
+                              className="text-emerald-700 hover:underline font-mono text-[11px] break-all block"
                             >
                               Check Solscan: {rcpt.signature.slice(0, 16)}...{rcpt.signature.slice(-8)} ↗
                             </a>
@@ -2062,31 +2027,31 @@ export default function Home() {
                       ))}
                     </div>
                   ) : swapReceipt ? (
-                    <div className="space-y-2 bg-[#0c0c0e] p-3.5 rounded-lg border border-[#27272a] text-[11px]">
-                      <div className="flex justify-between text-zinc-400">
+                    <div className="space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs">
+                      <div className="flex justify-between text-slate-600">
                         <span>Token Swapped:</span>
-                        <span className="text-white font-bold">{swapReceipt.symbol}</span>
+                        <span className="text-slate-900 font-semibold">{swapReceipt.symbol}</span>
                       </div>
-                      <div className="flex justify-between text-zinc-400">
+                      <div className="flex justify-between text-slate-600">
                         <span>USDC Committed:</span>
-                        <span className="text-white font-mono">${swapReceipt.amountUsdc.toFixed(2)}</span>
+                        <span className="text-slate-900 font-mono font-semibold">${swapReceipt.amountUsdc.toFixed(2)}</span>
                       </div>
-                      <div className="flex justify-between text-zinc-400">
+                      <div className="flex justify-between text-slate-600">
                         <span>Quoted Tokens:</span>
-                        <span className="text-zinc-300 font-mono">{swapReceipt.expectedNetTokens.toFixed(6)}</span>
+                        <span className="text-slate-800 font-mono">{swapReceipt.expectedNetTokens.toFixed(6)}</span>
                       </div>
-                      <div className="pt-2 border-t border-[#27272a] flex flex-col gap-1">
-                        <span className="text-zinc-400 text-[10px]">Check Solscan to verify transaction outcome:</span>
+                      <div className="pt-2 border-t border-slate-200/80 flex flex-col gap-1">
+                        <span className="text-slate-500 text-[11px]">Check Solscan to verify transaction outcome:</span>
                         <a
                           href={swapReceipt.solscanUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-[#14f195] hover:underline font-mono text-[10px] break-all"
+                          className="text-emerald-700 hover:underline font-mono text-[11px] break-all"
                         >
                           {swapReceipt.solscanUrl} ↗
                         </a>
                       </div>
-                      <div className="text-[10px] text-amber-400/90 font-sans pt-1 border-t border-[#27272a]/50">
+                      <div className="text-[11px] text-amber-800 pt-1 border-t border-slate-200/60">
                         The transaction was broadcast to the cluster and may still confirm or fail. Please check Solscan before retrying.
                       </div>
                     </div>
@@ -2099,7 +2064,7 @@ export default function Home() {
                       setBasketReceipts([]);
                       setIsBasketMode(false);
                     }}
-                    className="w-full py-2.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white font-bold transition"
+                    className="w-full py-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-semibold transition cursor-pointer text-xs"
                   >
                     Dismiss
                   </button>
@@ -2109,8 +2074,8 @@ export default function Home() {
               {/* Step: ERROR */}
               {buyStep === 'ERROR' && (
                 <div className="space-y-4">
-                  <div className="p-3 rounded-lg bg-rose-950/30 border border-rose-800/60 text-rose-300 text-xs font-sans">
-                    <span className="font-bold">Trade Halted:</span> {buyError || 'An error occurred during trade preparation.'}
+                  <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 text-xs">
+                    <span className="font-semibold">Trade Halted:</span> {buyError || 'An error occurred during trade preparation.'}
                   </div>
 
                   <button
@@ -2118,7 +2083,7 @@ export default function Home() {
                       setBuyStep('IDLE');
                       setBuyError(null);
                     }}
-                    className="w-full py-2.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white font-bold transition"
+                    className="w-full py-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-semibold transition cursor-pointer text-xs"
                   >
                     Dismiss
                   </button>
@@ -2128,11 +2093,6 @@ export default function Home() {
           </div>
         )}
       </main>
-
-      {/* Footer */}
-      <footer className="border-t border-[#27272a] py-6 text-center text-xs text-[#71717a] font-mono">
-        PreVal — Stocklana Hackathon Submission • PreStocks + Jupiter-routed liquidity
-      </footer>
     </div>
   );
 }

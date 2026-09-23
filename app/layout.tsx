@@ -14,8 +14,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
-      <body className="min-h-screen bg-[#0a0a0c] text-[#f4f4f6] selection:bg-[#14f195] selection:text-black">
+    <html lang="en">
+      <body className="min-h-screen bg-[#f8fafc] text-[#0f172a] selection:bg-emerald-500 selection:text-white antialiased">
         <SolanaWalletProvider>
           {children}
         </SolanaWalletProvider>
