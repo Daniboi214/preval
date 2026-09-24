@@ -2,10 +2,10 @@
 
 Buy the private AI & frontier-tech wave in one click, without overpaying.
 
-PreVal is a guarded buying tool for [PreStocks](https://prestocks.com/) pre-IPO tokens on Solana. Before you buy, it checks the live trading price against PreStocks' own reference price, checks pool depth, and blocks or warns you when something looks wrong — instead of letting you buy blind.
+PreVal is a guarded buying tool for [PreStocks](https://prestocks.com/) pre-IPO tokens on Solana. Before you buy, it checks the live trading price against PreStocks' own reference price, checks pool depth, and blocks or warns you when something looks wrong  instead of letting you buy blind.
 
-**Live demo:** [add your Vercel URL here]  
-**Category:** Investing (index baskets, recurring buys) — also submitted to the PreStocks bounty track  
+**Live demo:** [https://preval-two.vercel.app]  
+**Category:** Investing (index baskets, recurring buys) also submitted to the PreStocks bounty track  
 **Built for:** Stocklana Hackathon, Solana Foundation
 
 ---
