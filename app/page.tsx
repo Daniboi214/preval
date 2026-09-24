@@ -921,10 +921,7 @@ export default function Home() {
         <div className="max-w-6xl mx-auto px-2.5 sm:px-6 py-3 flex items-center justify-between gap-1.5 sm:gap-3">
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <div className="w-8 h-8 shrink-0 flex items-center justify-center">
-              <svg width="32" height="32" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 drop-shadow-xs">
-                <path d="M20 4 L34 10 L34 20 Q34 32 20 38 Q6 32 6 20 L6 10 Z" fill="#059669" />
-                <text x="20" y="25" textAnchor="middle" fill="#ffffff" fontSize="13" fontWeight="600" fontFamily="inherit">PV</text>
-              </svg>
+              <img src="/logo.png" alt="PreVal Logo" className="w-8 h-auto max-h-8 object-contain" />
             </div>
             <div>
               <div className="flex items-center gap-1.5 sm:gap-2">
