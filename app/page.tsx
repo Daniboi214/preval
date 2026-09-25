@@ -656,7 +656,7 @@ export default function Home() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             symbols: selectedSymbols,
-            totalUsdc: amountUsdc === 0.90 ? 0.30 : Math.min(amountUsdc, 0.90)
+            totalUsdc: Math.min(amountUsdc, 3.0)
           })
         });
         const simData = await simRes.json();
