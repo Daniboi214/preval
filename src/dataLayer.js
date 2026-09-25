@@ -661,6 +661,20 @@ function calculateTokenMetrics({
 }
 
 /**
+ * Sanitizes and validates user-specified guard limits.
+ * Protects against 0, negative numbers, empty strings, NaN, and null.
+ * Defaults: maxPremium = 5.0%, maxPriceImpact = 2.0%
+ */
+function sanitizeGuardLimits(maxPremium, maxPriceImpact) {
+  const numPremium = Number(maxPremium);
+  const numImpact = Number(maxPriceImpact);
+  return {
+    maxPremium: Number.isFinite(numPremium) && numPremium > 0 ? numPremium : 5.0,
+    maxPriceImpact: Number.isFinite(numImpact) && numImpact > 0 ? numImpact : 2.0
+  };
+}
+
+/**
  * 5. Guard Decision Engine: Evaluates PASS, WARN, or BLOCK
  * Rule 8: BLOCK only if empirical impact exceeds limit; if only Jupiter pool impact exceeds it, WARN.
  */
@@ -1293,9 +1307,10 @@ async function prepareSingleTokenSwapCore(params, deps = {}) {
   });
 
   // Client can only make limits stricter than server defaults (5% premium, 2% impact, 3% exit loss), never looser
-  const effectiveMaxPremium = Math.min(5.0, Number.isFinite(Number(maxPremium)) ? Number(maxPremium) : 5.0);
-  const effectiveMaxPriceImpact = Math.min(2.0, Number.isFinite(Number(maxPriceImpact)) ? Number(maxPriceImpact) : 2.0);
-  const effectiveWarnExitLoss = Math.min(3.0, Number.isFinite(Number(warnExitLoss)) ? Number(warnExitLoss) : 3.0);
+  const sanitizedLimits = sanitizeGuardLimits(maxPremium, maxPriceImpact);
+  const effectiveMaxPremium = Math.min(5.0, sanitizedLimits.maxPremium);
+  const effectiveMaxPriceImpact = Math.min(2.0, sanitizedLimits.maxPriceImpact);
+  const effectiveWarnExitLoss = Math.min(3.0, Number.isFinite(Number(warnExitLoss)) && Number(warnExitLoss) > 0 ? Number(warnExitLoss) : 3.0);
 
   const guard = evaluateGuard(metrics, {
     maxPremiumPct: effectiveMaxPremium,
@@ -1436,12 +1451,13 @@ async function prepareSingleTokenSwapCore(params, deps = {}) {
  * Strictly extracts permitted client parameters and forwards with real empty dependencies.
  */
 async function prepareSingleTokenSwap(clientParams = {}) {
+  const sanitizedLimits = sanitizeGuardLimits(clientParams.maxPremium, clientParams.maxPriceImpact);
   const safeClientParams = {
     symbol: clientParams.symbol,
     amountUsdc: clientParams.amountUsdc,
     userPublicKey: clientParams.userPublicKey,
-    maxPremium: clientParams.maxPremium,
-    maxPriceImpact: clientParams.maxPriceImpact,
+    maxPremium: sanitizedLimits.maxPremium,
+    maxPriceImpact: sanitizedLimits.maxPriceImpact,
     warnExitLoss: clientParams.warnExitLoss,
     confirmWarn: Boolean(clientParams.confirmWarn)
   };
@@ -1465,6 +1481,8 @@ async function prepareBasketSwapsCore(params, deps = {}) {
     warnExitLoss = 3.0,
     confirmWarn = false
   } = params;
+
+  const sanitizedLimits = sanitizeGuardLimits(maxPremium, maxPriceImpact);
 
   // 1. Validate Symbols: Must be array of 2 to 3 distinct valid PreStocks symbols
   if (!Array.isArray(symbols) || symbols.length < 2 || symbols.length > 3) {
@@ -1559,8 +1577,8 @@ async function prepareBasketSwapsCore(params, deps = {}) {
       symbol: sym,
       amountUsdc: legAmount,
       userPublicKey,
-      maxPremium,
-      maxPriceImpact,
+      maxPremium: sanitizedLimits.maxPremium,
+      maxPriceImpact: sanitizedLimits.maxPriceImpact,
       warnExitLoss,
       confirmWarn
     }, deps);
@@ -1647,12 +1665,13 @@ async function prepareBasketSwapsCore(params, deps = {}) {
  * Strictly extracts permitted client parameters and forwards with real empty dependencies.
  */
 async function prepareBasketSwaps(clientParams = {}) {
+  const sanitizedLimits = sanitizeGuardLimits(clientParams.maxPremium, clientParams.maxPriceImpact);
   const safeClientParams = {
     symbols: clientParams.symbols,
     totalUsdc: clientParams.totalUsdc,
     userPublicKey: clientParams.userPublicKey,
-    maxPremium: clientParams.maxPremium,
-    maxPriceImpact: clientParams.maxPriceImpact,
+    maxPremium: sanitizedLimits.maxPremium,
+    maxPriceImpact: sanitizedLimits.maxPriceImpact,
     warnExitLoss: clientParams.warnExitLoss,
     confirmWarn: Boolean(clientParams.confirmWarn)
   };
@@ -1831,7 +1850,8 @@ export {
   isBlockhashExpired,
   PRESTOCKS_API_URL,
   getLastDryRunFallback,
-  saveLastDryRun
+  saveLastDryRun,
+  sanitizeGuardLimits
 };
 
 /**

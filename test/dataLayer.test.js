@@ -31,7 +31,8 @@ import {
   checkRpcRateLimit,
   isBlockhashExpired,
   getLastDryRunFallback,
-  saveLastDryRun
+  saveLastDryRun,
+  sanitizeGuardLimits
 } from '../src/dataLayer.js';
 
 describe('Milestone 1: Pure Unit Tests (Offline / Zero Network)', () => {
@@ -2083,6 +2084,105 @@ describe('Milestone 1: Pure Unit Tests (Offline / Zero Network)', () => {
       };
       assert.equal('simAddress' in responsePayload, false);
       assert.ok(!Object.keys(responsePayload).includes('simAddress'));
+    });
+  });
+
+  describe('22. Guard Limits Sanitization & Empty/0 Input Resilience', () => {
+    test('UI payload simulation: empty string, 0, or NaN input produces default payload (5.0, 2.0)', () => {
+      // Simulate user clearing the input fields in the UI (e.g. Number(""))
+      const emptyInputPremium = Number("");
+      const emptyInputImpact = Number("");
+      assert.equal(emptyInputPremium, 0);
+      assert.equal(emptyInputImpact, 0);
+
+      // UI second safety net:
+      const payloadPremium = Number.isFinite(emptyInputPremium) && emptyInputPremium > 0 ? emptyInputPremium : 5.0;
+      const payloadImpact = Number.isFinite(emptyInputImpact) && emptyInputImpact > 0 ? emptyInputImpact : 2.0;
+
+      assert.equal(payloadPremium, 5.0);
+      assert.equal(payloadImpact, 2.0);
+
+      // Verify sanitizeGuardLimits produces identical safe defaults
+      assert.deepEqual(sanitizeGuardLimits(0, 0), { maxPremium: 5.0, maxPriceImpact: 2.0 });
+      assert.deepEqual(sanitizeGuardLimits("", ""), { maxPremium: 5.0, maxPriceImpact: 2.0 });
+      assert.deepEqual(sanitizeGuardLimits(null, null), { maxPremium: 5.0, maxPriceImpact: 2.0 });
+      assert.deepEqual(sanitizeGuardLimits(NaN, NaN), { maxPremium: 5.0, maxPriceImpact: 2.0 });
+      assert.deepEqual(sanitizeGuardLimits(-5, -2), { maxPremium: 5.0, maxPriceImpact: 2.0 });
+    });
+
+    test('Single-token prepare: 0/empty input falls back to default 5.0% and passes normal +0.7% markup (not blocked with limit: +0%)', async () => {
+      const mockCatalogCustom = [
+        { symbol: 'KALSHI', contract_address: 'DummyMint111111111111111111111111111111111', markPrice: 100.0 }
+      ];
+      const quote07Pct = {
+        ok: true,
+        data: {
+          outAmount: String(Math.round((1.0 / 100.7) * 1e9)),
+          priceImpactPct: '0.001',
+          routePlan: [{ swapInfo: { label: 'Meteora DLMM' } }]
+        }
+      };
+
+      // Simulating a request where client sent maxPremium: 0 or empty string
+      const res = await prepareSingleTokenSwapCore({
+        symbol: 'KALSHI',
+        amountUsdc: 1.0,
+        userPublicKey: '11111111111111111111111111111111',
+        maxPremium: 0,
+        maxPriceImpact: 0
+      }, {
+        isRealBuyOverride: true,
+        tokenCatalogOverride: { tokens: mockCatalogCustom, dataAgeSeconds: 5, source: 'live' },
+        quoteResultOverride: quote07Pct,
+        oneDollarQuoteOverride: quote07Pct,
+        metadataOverride: { decimals: 9, multiplier: 1.0, activeFeeBps: 50 }
+      });
+
+      assert.equal(res.status, 200);
+      assert.equal(res.body.canExecute, true);
+      assert.equal(res.body.guardStatus, 'PASS');
+    });
+
+    test('Basket prepare: 0/empty input falls back to default 5.0% across all legs', async () => {
+      const mockCatalogCustom = [
+        { symbol: 'KALSHI', contract_address: 'DummyMint111111111111111111111111111111111', markPrice: 100.0 },
+        { symbol: 'FIGUREAI', contract_address: 'DummyMint222222222222222222222222222222222', markPrice: 180.0 }
+      ];
+      const quotePass150 = {
+        ok: true,
+        data: {
+          outAmount: String(Math.round((1.5 / 100.5) * 1e9)),
+          priceImpactPct: '0.001',
+          routePlan: [{ swapInfo: { label: 'Meteora DLMM' } }]
+        }
+      };
+      const quotePass100 = {
+        ok: true,
+        data: {
+          outAmount: String(Math.round((1.0 / 100.5) * 1e9)),
+          priceImpactPct: '0.001',
+          routePlan: [{ swapInfo: { label: 'Meteora DLMM' } }]
+        }
+      };
+
+      const res = await prepareBasketSwapsCore({
+        symbols: ['KALSHI', 'FIGUREAI'],
+        totalUsdc: 3.0,
+        userPublicKey: '11111111111111111111111111111111',
+        maxPremium: 0,
+        maxPriceImpact: 0
+      }, {
+        isRealBuyOverride: true,
+        tokenCatalogOverride: { tokens: mockCatalogCustom, dataAgeSeconds: 5, source: 'live' },
+        quoteResultOverride: () => quotePass150,
+        oneDollarQuoteOverride: () => quotePass100,
+        metadataOverride: { decimals: 9, multiplier: 1.0, activeFeeBps: 50 }
+      });
+
+      assert.equal(res.status, 200);
+      assert.equal(res.body.canExecute, true);
+      assert.equal(res.body.guardStatus, 'PASS');
+      assert.equal(res.body.legs.length, 2);
     });
   });
 

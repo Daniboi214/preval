@@ -417,6 +417,9 @@ export default function Home() {
       setPreparedSwap(null);
     }
 
+    const safeMaxPremium = Number.isFinite(maxPremium) && maxPremium > 0 ? maxPremium : 5.0;
+    const safeMaxImpact = Number.isFinite(maxImpact) && maxImpact > 0 ? maxImpact : 2.0;
+
     try {
       const res = await fetch('/api/swap/prepare', {
         method: 'POST',
@@ -425,8 +428,8 @@ export default function Home() {
           symbol,
           amountUsdc: buyAmount,
           userPublicKey: wallet.publicKey.toBase58(),
-          maxPremium,
-          maxPriceImpact: maxImpact,
+          maxPremium: safeMaxPremium,
+          maxPriceImpact: safeMaxImpact,
           warnExitLoss: 3.0,
           confirmWarn: confirmedWarn
         })
@@ -702,6 +705,9 @@ export default function Home() {
       setPreparedBasket(null);
     }
 
+    const safeMaxPremium = Number.isFinite(maxPremium) && maxPremium > 0 ? maxPremium : 5.0;
+    const safeMaxImpact = Number.isFinite(maxImpact) && maxImpact > 0 ? maxImpact : 2.0;
+
     try {
       const res = await fetch('/api/basket/prepare', {
         method: 'POST',
@@ -710,8 +716,8 @@ export default function Home() {
           symbols: selectedSymbols,
           totalUsdc: amountUsdc,
           userPublicKey: wallet.publicKey.toBase58(),
-          maxPremium,
-          maxPriceImpact: maxImpact,
+          maxPremium: safeMaxPremium,
+          maxPriceImpact: safeMaxImpact,
           warnExitLoss: 3.0,
           confirmWarn: confirmedWarn
         })
@@ -1088,6 +1094,11 @@ export default function Home() {
                   autoComplete="off"
                   spellCheck={false}
                   onChange={(e) => setMaxPremium(Number(e.target.value))}
+                  onBlur={() => {
+                    if (!maxPremium || isNaN(maxPremium) || maxPremium <= 0) {
+                      setMaxPremium(5);
+                    }
+                  }}
                   className="w-full bg-slate-50 focus:bg-white border border-slate-200 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 rounded-lg pl-3 pr-7 py-2 text-sm text-slate-900 font-mono font-medium outline-none transition shadow-2xs"
                 />
                 <span className="absolute right-3 top-2.5 text-xs text-slate-500 font-medium">%</span>
@@ -1109,6 +1120,11 @@ export default function Home() {
                   autoComplete="off"
                   spellCheck={false}
                   onChange={(e) => setMaxImpact(Number(e.target.value))}
+                  onBlur={() => {
+                    if (!maxImpact || isNaN(maxImpact) || maxImpact <= 0) {
+                      setMaxImpact(2);
+                    }
+                  }}
                   className="w-full bg-slate-50 focus:bg-white border border-slate-200 focus:border-slate-400 focus:ring-2 focus:ring-slate-100 rounded-lg pl-3 pr-7 py-2 text-sm text-slate-900 font-mono font-medium outline-none transition shadow-2xs"
                 />
                 <span className="absolute right-3 top-2.5 text-xs text-slate-500 font-medium">%</span>
