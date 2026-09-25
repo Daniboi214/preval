@@ -2184,6 +2184,88 @@ describe('Milestone 1: Pure Unit Tests (Offline / Zero Network)', () => {
       assert.equal(res.body.guardStatus, 'PASS');
       assert.equal(res.body.legs.length, 2);
     });
+
+    test('Basket prepare: leg with WARN returns status 400 with requiresExplicitConfirm: true when confirmWarn is false', async () => {
+      const mockCatalogCustom = [
+        { symbol: 'KALSHI', contract_address: 'DummyMint111111111111111111111111111111111', markPrice: 100.0 },
+        { symbol: 'FIGUREAI', contract_address: 'DummyMint222222222222222222222222222222222', markPrice: 180.0 }
+      ];
+      // KALSHI passes, FIGUREAI produces a warning (e.g. pool impact 3.5%)
+      const quotePass = {
+        ok: true,
+        data: {
+          outAmount: String(Math.round((1.5 / 100.5) * 1e9)),
+          priceImpactPct: '0.001',
+          routePlan: [{ swapInfo: { label: 'Meteora DLMM' } }]
+        }
+      };
+      const quoteWarn = {
+        ok: true,
+        data: {
+          outAmount: String(Math.round((1.5 / 180.5) * 1e9)),
+          priceImpactPct: '0.035', // pool impact 3.5% triggers WARN
+          routePlan: [{ swapInfo: { label: 'Meteora DLMM' } }]
+        }
+      };
+      const oneDollarPass = {
+        ok: true,
+        data: {
+          outAmount: String(Math.round((1.0 / 100.5) * 1e9)),
+          priceImpactPct: '0.001',
+          routePlan: [{ swapInfo: { label: 'Meteora DLMM' } }]
+        }
+      };
+      const oneDollarWarn = {
+        ok: true,
+        data: {
+          outAmount: String(Math.round((1.0 / 180.5) * 1e9)),
+          priceImpactPct: '0.001',
+          routePlan: [{ swapInfo: { label: 'Meteora DLMM' } }]
+        }
+      };
+
+      // 1. Without confirmWarn: returns 400 requiring explicit confirmation
+      const resUnconfirmed = await prepareBasketSwapsCore({
+        symbols: ['KALSHI', 'FIGUREAI'],
+        totalUsdc: 3.0,
+        userPublicKey: '11111111111111111111111111111111',
+        confirmWarn: false
+      }, {
+        isRealBuyOverride: true,
+        tokenCatalogOverride: { tokens: mockCatalogCustom, dataAgeSeconds: 5, source: 'live' },
+        quoteResultOverride: (tok) => tok.symbol === 'FIGUREAI' ? quoteWarn : quotePass,
+        oneDollarQuoteOverride: (tok) => tok.symbol === 'FIGUREAI' ? oneDollarWarn : oneDollarPass,
+        metadataOverride: { decimals: 9, multiplier: 1.0, activeFeeBps: 50 },
+        swapTransactionOverride: 'mock_tx_base64'
+      });
+
+      assert.equal(resUnconfirmed.status, 400);
+      assert.equal(resUnconfirmed.body.canExecute, false);
+      assert.equal(resUnconfirmed.body.guardStatus, 'WARN');
+      assert.equal(resUnconfirmed.body.requiresExplicitConfirm, true);
+      assert.ok(resUnconfirmed.body.error.includes('requires explicit confirmation'));
+
+      // 2. With confirmWarn: true: confirms and returns 200 with swap transactions
+      const resConfirmed = await prepareBasketSwapsCore({
+        symbols: ['KALSHI', 'FIGUREAI'],
+        totalUsdc: 3.0,
+        userPublicKey: '11111111111111111111111111111111',
+        confirmWarn: true
+      }, {
+        isRealBuyOverride: true,
+        tokenCatalogOverride: { tokens: mockCatalogCustom, dataAgeSeconds: 5, source: 'live' },
+        quoteResultOverride: (tok) => tok.symbol === 'FIGUREAI' ? quoteWarn : quotePass,
+        oneDollarQuoteOverride: (tok) => tok.symbol === 'FIGUREAI' ? oneDollarWarn : oneDollarPass,
+        metadataOverride: { decimals: 9, multiplier: 1.0, activeFeeBps: 50 },
+        swapTransactionOverride: 'mock_tx_base64'
+      });
+
+      assert.equal(resConfirmed.status, 200);
+      assert.equal(resConfirmed.body.canExecute, true);
+      assert.equal(resConfirmed.body.guardStatus, 'WARN');
+      assert.equal(resConfirmed.body.legs.length, 2);
+      assert.ok(resConfirmed.body.legs.every(l => l.swapTransactionBase64));
+    });
   });
 
 });

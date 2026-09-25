@@ -1590,7 +1590,7 @@ async function prepareBasketSwapsCore(params, deps = {}) {
       body: legRes.body
     });
 
-    if (legRes.status === 403 || legRes.body?.guardStatus === 'BLOCK' || !legRes.body?.canExecute) {
+    if (legRes.status === 403 || legRes.body?.guardStatus === 'BLOCK') {
       anyBlock = true;
       blockErrors.push(`${sym}: ${legRes.body?.error || 'Safety guard block'}`);
     } else if (legRes.body?.guardStatus === 'WARN' || legRes.body?.requiresExplicitConfirm) {
@@ -1598,6 +1598,9 @@ async function prepareBasketSwapsCore(params, deps = {}) {
       if (legRes.body?.warnings) {
         warnMessages.push(...legRes.body.warnings.map(w => `${sym}: ${w}`));
       }
+    } else if (!legRes.body?.canExecute) {
+      anyBlock = true;
+      blockErrors.push(`${sym}: ${legRes.body?.error || 'Safety guard block'}`);
     }
   }
 

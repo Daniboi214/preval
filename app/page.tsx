@@ -725,7 +725,7 @@ export default function Home() {
 
       const data = await res.json();
       if (!res.ok || !data.canExecute) {
-        if (data.requiresExplicitConfirm) {
+        if (data.requiresExplicitConfirm || data.guardStatus === 'WARN' || data.error?.toLowerCase().includes('requires explicit confirmation')) {
           setPreparedBasket({ ...data, requiresExplicitConfirm: true });
           setBuyStep('CONFIRMING');
           return;
@@ -2079,19 +2079,57 @@ export default function Home() {
               {/* Step: ERROR */}
               {buyStep === 'ERROR' && (
                 <div className="space-y-4">
-                  <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 text-xs">
-                    <span className="font-semibold">Trade Halted:</span> {buyError || 'An error occurred during trade preparation.'}
+                  <div className={`p-3.5 rounded-xl text-xs border ${
+                    buyError?.toLowerCase().includes('requires explicit confirmation')
+                      ? 'bg-amber-50 border-amber-200/80 text-amber-900'
+                      : 'bg-rose-50 border-rose-200 text-rose-900'
+                  }`}>
+                    <span className="font-semibold">
+                      {buyError?.toLowerCase().includes('requires explicit confirmation')
+                        ? 'Confirmation Required:'
+                        : 'Trade Halted:'}
+                    </span>{' '}
+                    {buyError || 'An error occurred during trade preparation.'}
                   </div>
 
-                  <button
-                    onClick={() => {
-                      setBuyStep('IDLE');
-                      setBuyError(null);
-                    }}
-                    className="w-full py-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-semibold transition cursor-pointer text-xs"
-                  >
-                    Dismiss
-                  </button>
+                  <div className="flex flex-col sm:flex-row items-center gap-2.5">
+                    {buyError?.toLowerCase().includes('requires explicit confirmation') && (
+                      <button
+                        disabled={isReverifying}
+                        onClick={() => {
+                          if (isBasketMode) {
+                            handleInitiateBasketBuy(true);
+                          } else if (activeBuyToken) {
+                            handleInitiateBuy(activeBuyToken, true);
+                          }
+                        }}
+                        className="w-full py-2.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold transition flex items-center justify-center gap-2 disabled:opacity-75 disabled:cursor-not-allowed cursor-pointer text-xs shadow-2xs"
+                      >
+                        {isReverifying ? (
+                          <>
+                            <span className="inline-block h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                            <span>Re-verifying...</span>
+                          </>
+                        ) : (
+                          <span>{isBasketMode ? 'Confirm Warning & Re-verify Basket' : 'Confirm Warning & Re-verify'}</span>
+                        )}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setBuyStep('IDLE');
+                        setBuyError(null);
+                        setIsBasketMode(false);
+                      }}
+                      className={`w-full py-2.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                        buyError?.toLowerCase().includes('requires explicit confirmation')
+                          ? 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
+                          : 'bg-slate-900 hover:bg-slate-800 text-white'
+                      }`}
+                    >
+                      Dismiss
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
